@@ -1,0 +1,1 @@
+const CSV_STORE: &'static str = "../db.csv";
