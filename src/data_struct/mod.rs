@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use crate::utils::validate_key;
+use crate::utils::verify_password;
 
 ///
 ///
@@ -9,7 +9,7 @@ use crate::utils::validate_key;
 pub struct Password {
     id: String,
     uname: String,
-    password: String,
+    hashed_pass: String,
     descriptor: Option<String>,
 }
 
@@ -35,11 +35,18 @@ impl Password {
         Self {
             id,
             uname,
-            password: hashed_password,
+            hashed_pass: hashed_password,
             descriptor,
         }
     }
 }
+
+impl PartialEq for Password {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.uname == other.uname
+    }
+}
+
 
 ///
 /// idiomatic Rust way to encode "can't access data without a valid state transition"
@@ -60,23 +67,41 @@ pub struct UnlockedVault {
 
 pub struct VaultState {
     name: String,
-    password: String,
+    hashed_pass: String,
     store: HashMap<String, Password>,
 }
 
 impl VaultState {
-    pub fn new(name: String, password: String, store: HashMap<String, Password>) -> Self {
+    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
         Self {
             name,
-            password,
+            hashed_pass,
             store,
         }
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn change_password() -> bool {
+        todo!()
     }
 }
 
 impl LockedVault {
-    pub fn unlock(self, key: String) -> Result<UnlockedVault, LockedVault> {
-        if validate_key(&key, &self.state.password) {
+pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
+        Self {
+            state: VaultState {
+                name,
+                hashed_pass,
+                store,
+            },
+        }
+    }
+
+    pub fn unlock(self, password: String) -> Result<UnlockedVault, LockedVault> {
+        if verify_password(&password, &self.state.hashed_pass) {
             Ok(UnlockedVault { state: self.state })
         } else {
             Err(self)
@@ -85,21 +110,29 @@ impl LockedVault {
 }
 
 impl UnlockedVault {
-    pub fn new(name: String, password: String, store: HashMap<String, Password>) -> Self {
+    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
         Self {
             state: VaultState {
                 name,
-                password,
+                hashed_pass,
                 store,
             },
         }
     }
 
-    pub fn lock(self, key: String) -> Result<LockedVault, UnlockedVault> {
-        if validate_key(&key, &self.state.password) {
+    pub fn lock(self, password: String) -> Result<LockedVault, UnlockedVault> {
+        if verify_password(&password, &self.state.hashed_pass) {
             Ok(LockedVault { state: self.state })
         } else {
             Err(self)
         }
+    }
+
+    pub fn store_mut(&self) -> &mut HashMap<String, Password> {
+        todo!()
+    }
+
+    pub fn store(&self) -> &HashMap<String, Password> {
+        &self.state.store
     }
 }

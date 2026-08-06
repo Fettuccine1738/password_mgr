@@ -2,8 +2,6 @@ use std::io::{self, BufRead};
 
 use pass_man::{add_password, create_new_vault, data_struct::UnlockedVault, get_password, sign_into_vault};
 
-struct PromptResult;
-
 // fn main() {
 //     let mut input = String::new();
 //     io::stdin()
