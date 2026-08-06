@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::path::{Path, PathBuf};
 
 use crate::utils::verify_password;
 
@@ -47,7 +48,6 @@ impl PartialEq for Password {
     }
 }
 
-
 ///
 /// idiomatic Rust way to encode "can't access data without a valid state transition"
 /// at compile time.
@@ -90,7 +90,7 @@ impl VaultState {
 }
 
 impl LockedVault {
-pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
+    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
         Self {
             state: VaultState {
                 name,
@@ -110,6 +110,15 @@ pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) 
 }
 
 impl UnlockedVault {
+    pub fn init_no_store(name: String, hashed_pass: String) -> Self {
+        Self {
+            state: VaultState {
+                name,
+                hashed_pass,
+                store: HashMap::new(),
+            },
+        }
+    }
     pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
         Self {
             state: VaultState {
@@ -136,3 +145,6 @@ impl UnlockedVault {
         &self.state.store
     }
 }
+
+#[derive(Default)]
+pub struct VaultFiles(pub Vec<PathBuf>);

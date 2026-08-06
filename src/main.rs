@@ -1,6 +1,9 @@
 use std::io::{self, BufRead};
 
-use pass_man::{add_password, create_new_vault, data_struct::UnlockedVault, get_password, sign_into_vault};
+use pass_man::{
+    add_password, create_new_vault, data_struct::UnlockedVault, get_password, load_vault_files,
+    sign_into_vault,
+};
 
 // fn main() {
 //     let mut input = String::new();
@@ -20,6 +23,13 @@ const PROMPT_START_UP: &str = "What would you like to do? \n\
                                NOTE: If you have previously signed in, no need to 
                                sign in again.
                               ";
+
+fn run() {
+    print_banner();
+    loop {
+        let _ = prompt();
+    }
+}
 
 fn prompt() -> Result<(), std::io::Error> {
     let mut input: String = String::new();
@@ -77,5 +87,7 @@ fn main() {
     println!("         PasswordManager");
     println!("=================================");
     println!("{}", PROMPT_START_UP);
+    let vault_cache = load_vault_files().unwrap();
+    println!("Found {} Vaults.", vault_cache.0.len());
     let _ = prompt();
 }
