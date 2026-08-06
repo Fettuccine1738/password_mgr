@@ -20,8 +20,7 @@ const PROMPT_START_UP: &str = "What would you like to do? \n\
                                2. Sign in to a password vault \n\
                                3. Add a password to a vault \n\
                                4. Fetch a password from a vault \n\
-                               NOTE: If you have previously signed in, no need to 
-                               sign in again.
+                               NOTE: If you have previously signed in, no need to sign in again.
                               ";
 
 fn run() {
@@ -86,8 +85,11 @@ fn main() {
     println!("=================================");
     println!("         PasswordManager");
     println!("=================================");
-    println!("{}", PROMPT_START_UP);
     let vault_cache = load_vault_files().unwrap();
-    println!("Found {} Vaults.", vault_cache.0.len());
-    let _ = prompt();
+
+    loop {
+        println!("{}", PROMPT_START_UP);
+        println!("Found {} Vaults.", vault_cache.0.len());
+        let _ = prompt();
+    }
 }

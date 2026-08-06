@@ -4,8 +4,6 @@ use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
 
 use std::fs;
-use std::io;
-use std::path::Path;
 use std::path::PathBuf;
 
 pub mod data_struct;
@@ -18,12 +16,24 @@ pub fn create_new_vault() -> UnlockedVault {
     eprintln!("Please provide a name for the vault. NOTE: This can never be changed again:");
     let mut name = String::new();
     utils::read_line(&mut name);
+    let name = name.trim();
 
     eprintln!("Please enter a master password. NOTE: You can change this anytime:");
     let mut password = String::new();
     utils::read_line(&mut password);
-    eprintln!("New Vault create and saved as: {}.cvv", name);
-    UnlockedVault::init_no_store(name.trim().to_owned(), password.trim().to_owned())
+    let password = password.trim();
+
+    let filename = name.to_owned() + ".cvv";
+    save_file_under_dir(&filename);
+    UnlockedVault::init_no_store(name.to_owned(), password.to_owned())
+}
+
+fn save_file_under_dir(filename: &str) {
+    let path = get_store_dir_path().join(filename);
+    match std::fs::File::create(path) {
+        Ok(_) => eprintln!("New Vault create and saved as: {}.cvv", filename),
+        Err(_) => eprintln!("{}.cvv could not be creaed", filename),
+    }
 }
 
 pub fn sign_into_vault() -> Result<UnlockedVault, std::io::Error> {
@@ -55,20 +65,24 @@ pub fn get_password() -> Option<Password> {
 }
 
 pub fn load_vault_files() -> Result<VaultFiles, std::io::Error> {
-    if !std::fs::exists(&get_store_dir_path())
+    let pbuf = &get_store_dir_path();
+    if !std::fs::exists(pbuf)
         .expect("Can't check existence of file does_not_exist.txt")
     {
-        fs::create_dir(STORE_DIR_PATH).expect("Could not create directory");
-        return Ok(VaultFiles::default());
+        match fs::create_dir(pbuf) {
+            Ok(_) => return Ok(VaultFiles::default()),
+            Err(_) => eprintln!("Could not create directory path"),
+        }
     }
+    eprintln!("Loading Vaults...");
 
     let mut v = vec![];
 
-    let dir_path: &Path = Path::new(STORE_DIR_PATH);
-    if dir_path.is_dir() {
-        for entry in fs::read_dir(STORE_DIR_PATH)? {
+    if pbuf.is_dir() {
+        for entry in fs::read_dir(pbuf)? {
             let entry = entry?;
             let path = entry.path();
+            eprintln!("found {}", path.to_str().unwrap());
 
             if !path.is_dir() {
                 v.push(entry.path().clone());
