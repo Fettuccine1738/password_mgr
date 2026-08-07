@@ -52,6 +52,7 @@ impl PartialEq for Password {
 /// idiomatic Rust way to encode "can't access data without a valid state transition"
 /// at compile time.
 ///
+#[derive(Debug)]
 pub struct LockedVault {
     // type state pattern, both LockedVault and UnlockedVault share the
     // same data. We use the types themselves as thin markers to show
@@ -61,10 +62,13 @@ pub struct LockedVault {
 
 ///
 ///
+///
+#[derive(Debug)]
 pub struct UnlockedVault {
     state: VaultState,
 }
 
+#[derive(Debug)]
 pub struct VaultState {
     name: String,
     hashed_pass: String,
@@ -100,8 +104,8 @@ impl LockedVault {
         }
     }
 
-    pub fn unlock(self, password: String) -> Result<UnlockedVault, LockedVault> {
-        if verify_password(&password, &self.state.hashed_pass) {
+    pub fn unlock(self, password: &str) -> Result<UnlockedVault, LockedVault> {
+        if verify_password(password, &self.state.hashed_pass) {
             Ok(UnlockedVault { state: self.state })
         } else {
             Err(self)
@@ -119,6 +123,7 @@ impl UnlockedVault {
             },
         }
     }
+
     pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
         Self {
             state: VaultState {
@@ -129,8 +134,8 @@ impl UnlockedVault {
         }
     }
 
-    pub fn lock(self, password: String) -> Result<LockedVault, UnlockedVault> {
-        if verify_password(&password, &self.state.hashed_pass) {
+    pub fn lock(self, password: &str) -> Result<LockedVault, UnlockedVault> {
+        if verify_password(password, &self.state.hashed_pass) {
             Ok(LockedVault { state: self.state })
         } else {
             Err(self)
@@ -148,3 +153,9 @@ impl UnlockedVault {
 
 #[derive(Default)]
 pub struct VaultFiles(pub Vec<PathBuf>);
+
+pub enum UnlockError {
+    WrongPassword,
+    CorruptStore,
+    Io(std::io::Error),
+}
