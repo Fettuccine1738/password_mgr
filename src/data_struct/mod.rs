@@ -1,24 +1,24 @@
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
-use crate::utils::verify_password;
+use argon2::Argon2;
+
 
 ///
 ///
 #[derive(Debug)]
-pub struct Password {
-    id: String,
-    uname: String,
-    hashed_pass: String,
-    descriptor: Option<String>,
+pub struct Secret {
+    pub id: String,
+    pub uname: String,
+    pub secret: String,
+    pub hint: Option<String>,
 }
 
-impl Display for Password {
+impl Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let _ = write!(f, "password = ************************************");
         let _ = write!(f, "passphrase = ");
-        if let Some(s) = &self.descriptor {
+        if let Some(s) = &self.hint {
             write!(f, "{}", s)
         } else {
             write!(f, "<NO Passphrase set for this>")
@@ -26,23 +26,23 @@ impl Display for Password {
     }
 }
 
-impl Password {
+impl Secret {
     pub fn new(
         id: String,
         uname: String,
-        hashed_password: String,
-        descriptor: Option<String>,
+        secretword: String,
+        hint: Option<String>,
     ) -> Self {
         Self {
             id,
             uname,
-            hashed_pass: hashed_password,
-            descriptor,
+            secret: secretword,
+            hint,
         }
     }
 }
 
-impl PartialEq for Password {
+impl PartialEq for Secret {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id && self.uname == other.uname
     }
@@ -53,102 +53,64 @@ impl PartialEq for Password {
 /// at compile time.
 ///
 #[derive(Debug)]
-pub struct LockedVault {
+pub struct UnlockedVault {
     // type state pattern, both LockedVault and UnlockedVault share the
     // same data. We use the types themselves as thin markers to show
     // what operations should be used with them.
-    state: VaultState,
-}
-
-///
-///
-///
-#[derive(Debug)]
-pub struct UnlockedVault {
-    state: VaultState,
-}
-
-#[derive(Debug)]
-pub struct VaultState {
     name: String,
-    hashed_pass: String,
-    store: HashMap<String, Password>,
+    key: [u8; 32],
+    salt: [u8; 16],
+    kdf_params: Argon2Params,
+    secrets: VaultContents,
 }
 
-impl VaultState {
-    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
-        Self {
-            name,
-            hashed_pass,
-            store,
-        }
-    }
+///
+///
+///
+#[derive(Debug)]
+pub struct LockedVault {
+    name: String,
+    salt: [u8; 16],
+    kdf_params: argon2::Argon2Params,
+    nonce: [u8; 12],
+    ciphertext: Vec<u8>, 
+}
 
-    pub fn get_name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn change_password() -> bool {
-        todo!()
-    }
+#[derive(Debug)]
+pub enum VaultState {
+    Locked(LockedVault),
+    Unlocked(UnlockedVault),
 }
 
 impl LockedVault {
-    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
-        Self {
-            state: VaultState {
-                name,
-                hashed_pass,
-                store,
-            },
-        }
-    }
+    pub fn unlock(self, password: &str) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
+        let key = derive_key(password, &self.salt, &self.kdf_params):
 
-    pub fn unlock(self, password: &str) -> Result<UnlockedVault, LockedVault> {
-        if verify_password(password, &self.state.hashed_pass) {
-            Ok(UnlockedVault { state: self.state })
-        } else {
-            Err(self)
-        }
+        match aes_gcm_decrypt(&key, &self.nonce, &self.ciphertext) {
+            Ok(plaintxt) => match VaultContents::deserialize(&plaintxt) {
+                Ok(s) => Ok(UnlockedVault {
+                    name: self.name,
+                    key,
+                    salt: self.salt,
+                    kdf_params: self.kdf_params,
+                    secrets,
+                }),
+                Err(_) => Err((self, UnlockError::CorruptStore))
+            },
+        },
+        Err(_) => Err((self, UnlockError::WrongPassword)),
     }
 }
 
 impl UnlockedVault {
-    pub fn init_no_store(name: String, hashed_pass: String) -> Self {
-        Self {
-            state: VaultState {
-                name,
-                hashed_pass,
-                store: HashMap::new(),
-            },
-        }
+    pub fn lock(self) -> LockedVault {
+        let nonce = generate_fresh_nonce();
+        let plaintxt = self.secrets.serialize();
+        let ciphertxt = aes_gcm_encrypt(&self.key, &nonce, &plaintxt); 
+
+        LockedVault { name: self.name, salt: self.salt, kdf_params: self.kdf_params, nonce, ciphertext }
     }
 
-    pub fn new(name: String, hashed_pass: String, store: HashMap<String, Password>) -> Self {
-        Self {
-            state: VaultState {
-                name,
-                hashed_pass,
-                store,
-            },
-        }
-    }
-
-    pub fn lock(self, password: &str) -> Result<LockedVault, UnlockedVault> {
-        if verify_password(password, &self.state.hashed_pass) {
-            Ok(LockedVault { state: self.state })
-        } else {
-            Err(self)
-        }
-    }
-
-    pub fn store_mut(&self) -> &mut HashMap<String, Password> {
-        todo!()
-    }
-
-    pub fn store(&self) -> &HashMap<String, Password> {
-        &self.state.store
-    }
 }
 
 #[derive(Default)]
