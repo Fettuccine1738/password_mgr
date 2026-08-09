@@ -1,5 +1,5 @@
 use crate::data_struct::LockedVault;
-use crate::data_struct::Password;
+use crate::data_struct::Secret;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
 
@@ -44,29 +44,29 @@ pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error>
     let name = name.trim();
 
     if exists(name, vf) {
-            let mut password = String::new();
-            eprintln!("Vault with name `{}` found.", name);
-            eprintln!("Enter password for `{}` vault.", name);
-            utils::read_line(&mut password);
+        let mut password = String::new();
+        eprintln!("Vault with name `{}` found.", name);
+        eprintln!("Enter password for `{}` vault.", name);
+        utils::read_line(&mut password);
 
-            // exists succeeds but might fail due to TOCTOU errors with 
-            // the file.
-            let lv: LockedVault = populate_vault(name).unwrap(); 
+        // exists succeeds but might fail due to TOCTOU errors with
+        // the file.
+        let lv: LockedVault = populate_vault(name).unwrap();
 
-            let password = password.trim();
+        let password = password.trim();
 
-            let uv = lv.unlock(password);
-            if uv.is_ok() {
-                eprintln!("Thank you, you are now signed in.");
-                return Ok(uv.unwrap());
-            } else {
-                todo!();
-                // some retry logic, to prompt again for answer.
-            }
+        let uv = lv.unlock(password);
+        if uv.is_ok() {
+            eprintln!("Thank you, you are now signed in.");
+            return Ok(uv.unwrap());
+        } else {
+            todo!();
+            // some retry logic, to prompt again for answer.
+        }
     } else {
-        // implement retry logic here 
+        // implement retry logic here
         todo!()
-        // what does this do here  
+        // what does this do here
     }
 }
 
@@ -95,21 +95,20 @@ fn populate_vault(name: &str) -> Option<LockedVault> {
     todo!()
 }
 
-
 /// adds a password to a `Vault`.
 ///
 /// # Arguments
 /// * `uv` - UnlockedVault to store password to.
-/// * `p` - Password details to be stored.
+/// * `p` - Secret details to be stored.
 ///
 /// # Returns
 /// true - if no instance of this password existed before storage
 /// false - if a password with the same username and id exists
-pub fn add_password(uv: UnlockedVault, p: Password) -> bool {
+pub fn add_password(uv: UnlockedVault, p: Secret) -> bool {
     false
 }
 
-pub fn get_password() -> Option<Password> {
+pub fn get_password() -> Option<Secret> {
     None
 }
 
