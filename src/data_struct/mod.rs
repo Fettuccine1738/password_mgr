@@ -84,7 +84,8 @@ pub struct UnlockedVault {
 
 impl LockedVault {
     pub fn unlock(self, password: &str) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
-        let key: [u8; 32] = crate::utils::derive_key(password, &self.salt, &self.kdf_params);
+        let key: [u8; 32] =
+            crate::utils::derive_key(password.as_bytes(), &self.salt, &self.kdf_params);
 
         match aes_gcm_decrypt(&key, &self.nonce, &self.ciphertext) {
             Ok(plaintext) => match VaultContents::deserialize(&plaintext) {

@@ -1,3 +1,5 @@
+pub mod retry;
+
 use aes_gcm::Aes256Gcm;
 use argon2::{
     Argon2, Params as Argon2Params,
@@ -62,10 +64,10 @@ pub fn generate_fresh_nonce() -> [u8; 12] {
     nonce
 }
 
-pub(crate) fn derive_key(pwd: &[u8], salt: &[u8], params: Argon2Params) -> [u8; 32] {
+pub(crate) fn derive_key(pwd: &[u8], salt: &[u8], params: &Argon2Params) -> [u8; 32] {
     let mut output = [0u8; 32];
     Argon2::default()
         .hash_password_into(pwd, salt, &mut output)
-        .expect(todo!("Password hashing should not fail here"));
+        .expect(todo!("Key Derivation Fn should not fail here"));
     output
 }
