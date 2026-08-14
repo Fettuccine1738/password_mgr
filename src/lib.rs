@@ -4,6 +4,8 @@ use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
 
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
 pub mod data_struct;
@@ -25,7 +27,8 @@ pub fn create_new_vault() -> UnlockedVault {
 
     let filename = name.to_owned() + ".cvv";
     save_file_under_dir(&filename);
-    UnlockedVault::init_no_store(name.to_owned(), password.to_owned())
+    let lv = LockedVault::new(name.to_owned());
+    lv.unlock(password).expect("unlocking should not fail here")
 }
 
 fn save_file_under_dir(filename: &str) {
@@ -43,7 +46,9 @@ pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error>
     utils::read_line(&mut name);
     let name = name.trim();
 
-    if exists(name, vf) {
+    let (exist, filepath) = exists(name, vf);
+
+    if exist {
         let mut password = String::new();
         eprintln!("Vault with name `{}` found.", name);
         eprintln!("Enter password for `{}` vault.", name);
@@ -51,7 +56,7 @@ pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error>
 
         // exists succeeds but might fail due to TOCTOU errors with
         // the file.
-        let lv: LockedVault = populate_vault(name).unwrap();
+        let lv: LockedVault = populate_vault(name, filepath).unwrap();
 
         let password = password.trim();
 
@@ -70,7 +75,7 @@ pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error>
     }
 }
 
-pub fn exists(name: &str, vf: &VaultFiles) -> bool {
+pub fn exists(name: &str, vf: &VaultFiles) -> (bool, String) {
     let base = get_store_dir_path();
 
     for path in &vf.0 {
@@ -84,15 +89,40 @@ pub fn exists(name: &str, vf: &VaultFiles) -> bool {
 
         if token.to_str().unwrap() == name {
             // return populate_vault(path);
-            return true;
+            return (true, path.to_str().unwrap().to_string());
         }
     }
 
-    false
+    (false, String::new())
 }
 
-fn populate_vault(name: &str) -> Option<LockedVault> {
-    todo!()
+fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
+    if let Ok(mut file) = File::open(path) {
+        // let bytes = file.bytes();
+        // let data = bytes.flat_map(|b| b.ok()).collect::<Vec<u8>>();
+        let mut buf = vec![];
+        match file.read_to_end(&mut buf) {
+            Ok(_) => (),
+            Err(_) => return None,
+        };
+
+        // we know the unencrypted header is the sum of nonce and salt
+        if buf.len() < 24 {
+            return None;
+        }
+
+        let (salt_nonce, cipher) = buf.split_at(24); 
+        let (s, n) = salt_nonce.split_at(16);
+        let mut salt: [u8; 16] = [0u8; 16];
+        let mut nonce: [u8; 12] = [0u8; 12];
+
+        salt.copy_from_slice(&s);
+        nonce.copy_from_slice(&n);
+
+        return Some(LockedVault::init(name, salt, nonce, cipher));
+    }
+
+    None
 }
 
 /// adds a password to a `Vault`.
@@ -108,7 +138,11 @@ pub fn add_password(uv: UnlockedVault, p: Secret) -> bool {
     false
 }
 
-pub fn get_password() -> Option<Secret> {
+pub fn get_secret(id: String) -> Option<Secret> {
+    None
+}
+
+pub fn get_secret_using(hint: String) -> Option<Secret> {
     None
 }
 

@@ -1,8 +1,7 @@
 use std::io::{self, BufRead};
 
 use pass_man::{
-    add_password, create_new_vault, data_struct::UnlockedVault, get_password, load_vault_files,
-    sign_into_vault,
+    add_password, create_new_vault, data_struct::UnlockedVault, load_vault_files, sign_into_vault, utils::retry::{BoolConditionRetry, Retry},
 };
 
 // fn main() {
@@ -43,13 +42,13 @@ fn prompt() -> Result<(), std::io::Error> {
         let current_vault: UnlockedVault = create_new_vault();
     } else if input == "2" {
         // sign in to  a new password vault
-        let current_vault = sign_into_vault();
+        let current_vault = todo!(); // sign_into_vault();
     } else if input == "3" {
         // prompt for sign name, password and allow record insertion
         add_password(todo!(), todo!());
     } else if input == "4" {
         // fetch record if not signed in yet.
-        get_password();
+        todo!()
     } else {
         let input = &input.to_lowercase();
         if input == "q" || input == "quit" || input == "Quit" {
@@ -86,6 +85,18 @@ fn main() {
     println!("         PasswordManager");
     println!("=================================");
     let vault_cache = load_vault_files().unwrap();
+
+    let mut m = BoolConditionRetry::default();
+    // if <BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
+    let preset = "cake42$";
+    if <BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
+        let password = rpassword::prompt_password("Please enter password").unwrap();
+        println!("entered password {}", password);
+        password == preset
+    }) {
+        println!("password does_not_exist = ");
+        std::process::exit(69);
+    }
 
     loop {
         println!("{}", PROMPT_START_UP);

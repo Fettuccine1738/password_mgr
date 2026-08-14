@@ -3,9 +3,7 @@ pub mod retry;
 use aes_gcm::Aes256Gcm;
 use argon2::{
     Argon2, Params as Argon2Params,
-    password_hash::{
-        self, PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
-    },
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 
 use std::io;
@@ -64,7 +62,10 @@ pub fn generate_fresh_nonce() -> [u8; 12] {
     nonce
 }
 
-pub(crate) fn derive_key(pwd: &[u8], salt: &[u8], params: &Argon2Params) -> [u8; 32] {
+pub(crate) fn derive_key(pwd: &[u8], salt: &[u8], _params: &Argon2Params) -> [u8; 32] {
+    // Params cost m_costs (memory KiB), t_cost(iterations), p_cost(parallelims)
+    // no need for this yet.
+    // let a2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, _params.clone());
     let mut output = [0u8; 32];
     Argon2::default()
         .hash_password_into(pwd, salt, &mut output)
