@@ -86,18 +86,6 @@ fn main() {
     println!("=================================");
     let vault_cache = load_vault_files().unwrap();
 
-    let mut m = BoolConditionRetry::default();
-    // if <BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
-    let preset = "cake42$";
-    if <BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
-        let password = rpassword::prompt_password("Please enter password").unwrap();
-        println!("entered password {}", password);
-        password == preset
-    }) {
-        println!("password does_not_exist = ");
-        std::process::exit(69);
-    }
-
     loop {
         println!("{}", PROMPT_START_UP);
         println!("Found {} Vaults.", vault_cache.0.len());

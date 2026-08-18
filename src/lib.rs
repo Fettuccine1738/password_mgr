@@ -2,6 +2,8 @@ use crate::data_struct::LockedVault;
 use crate::data_struct::Secret;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
+use crate::utils::retry::BoolConditionRetry;
+use crate::utils::retry::Retry;
 
 use std::fs;
 use std::fs::File;
@@ -13,7 +15,7 @@ pub mod utils;
 
 const STORE_DIR_PATH: &str = ".pass_mgr";
 
-pub fn create_new_vault() -> UnlockedVault {
+pub fn create_new_vault() -> Option<UnlockedVault> {
     eprintln!("Creating a new vault...");
     eprintln!("Please provide a name for the vault. NOTE: This can never be changed again:");
     let mut name = String::new();
@@ -21,14 +23,23 @@ pub fn create_new_vault() -> UnlockedVault {
     let name = name.trim();
 
     eprintln!("Please enter a master password. NOTE: You can change this anytime:");
-    let mut password = String::new();
-    utils::read_line(&mut password);
-    let password = password.trim();
+    let password: String = rpassword::prompt_password("Please enter password:\t").unwrap();
+
+    let mut m = BoolConditionRetry::default();
+
+    if !(<BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
+        let confirm_password = rpassword::prompt_password("Confirm password:\t").unwrap();
+        println!("passwords do not match");
+        password == confirm_password
+    })) {
+        println!("Max tries = {} exceeded", 1);
+        return None;
+    }
 
     let filename = name.to_owned() + ".cvv";
     save_file_under_dir(&filename);
     let lv = LockedVault::new(name.to_owned());
-    lv.unlock(password).expect("unlocking should not fail here")
+    Some(lv.unlock(password.trim()).expect("unlocking should not fail here"))
 }
 
 fn save_file_under_dir(filename: &str) {
@@ -111,7 +122,7 @@ fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
             return None;
         }
 
-        let (salt_nonce, cipher) = buf.split_at(24); 
+        let (salt_nonce, cipher) = buf.split_at(24);
         let (s, n) = salt_nonce.split_at(16);
         let mut salt: [u8; 16] = [0u8; 16];
         let mut nonce: [u8; 12] = [0u8; 12];

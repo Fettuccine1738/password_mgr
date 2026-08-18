@@ -130,8 +130,8 @@ impl LockedVault {
 #[derive(Debug)]
 pub struct UnlockedVault {
     name: String,
-    key: [u8; KDF_KEY_LEN],  // derived key, kept only for re-encrypting on save
-    salt: [u8; SALT_LEN], // kept so we can reuse or rotate on next save
+    key: [u8; KDF_KEY_LEN], // derived key, kept only for re-encrypting on save
+    salt: [u8; SALT_LEN],   // kept so we can reuse or rotate on next save
     kdf_params: Argon2Params,
     secrets: VaultContents, // your actual decrypted usernames/passwords
 }
