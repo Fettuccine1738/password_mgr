@@ -33,7 +33,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
 };
 
-pub const MAGIC: &[u8; 4] = b"VLT1"; // version/sanity tag, checked after decrypt
+pub const DECRYPTION_CHECK_TAG: &[u8; 4] = b"VLT1"; // version/sanity tag, checked after decrypt
 
 pub fn aes_gcm_encrypt(key: &[u8; 32], nonce: &[u8; 12], plaintext: &[u8]) -> Vec<u8> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));

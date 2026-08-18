@@ -1,7 +1,7 @@
 use super::Secret;
-use crate::utils::MAGIC;
+use crate::utils::DECRYPTION_CHECK_TAG;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VaultContents {
     pub secrets: Vec<Secret>,
 }
@@ -15,7 +15,7 @@ impl VaultContents {
     //     ciphertext: Vec<u8>, // includes AEAD tag
     // }
 
-    /// Format: MAGIC ||
+    /// Format: DECRYPTION_CHECK_TAG ||
     /// secret_count(u32 LE) || for each secret:
     ///   id_len(u32 LE) || id_bytes ||
     ///   username_len(u32 LE) || username_bytes ||
@@ -23,7 +23,7 @@ impl VaultContents {
     ///   Optional( == 0 means the hint does not exist) hint_len(u32 LE) || hint_bytes
     pub fn serialize(&self) -> Vec<u8> {
         let mut out = Vec::new();
-        out.extend_from_slice(MAGIC);
+        out.extend_from_slice(DECRYPTION_CHECK_TAG);
 
         out.extend_from_slice(&(self.secrets.len() as u32).to_le_bytes());
 
@@ -55,7 +55,7 @@ impl VaultContents {
     }
 
     pub fn deserialize(data: &[u8]) -> Result<Self, ()> {
-        if data.len() < 8 || &data[0..4] != MAGIC {
+        if data.len() < 8 || &data[0..4] != DECRYPTION_CHECK_TAG {
             return Err(()); // not our format / wrong password produced garbage
         }
 
@@ -112,19 +112,3 @@ fn read_string(data: &[u8], pos: &mut usize, len: u32) -> Result<String, ()> {
     *pos += len as usize;
     String::from_utf8(bytes.to_vec()).map_err(|_| ())
 }
-
-fn read_u8(data: &[u8], pos: &mut usize) -> Result<u8, ()> {
-    let byte = data.get(*pos..*pos + 1).ok_or(())?;
-    *pos += 1;
-    Ok(u8::from_le_bytes(byte.try_into().map_err(|_| ())?))
-}
-
-// fn read_u8_chunks(data: &[u8], pos: &mut usize, mut iter: usize) -> Result<[u8; 16], ()> {
-//     let mut arr = [0u8; 16];
-//     iter = 16.min(iter);
-
-//     for i in 0..iter {
-//         arr[i] = read_u8(data, pos).unwrap();
-//     }
-//     Ok(arr)
-// }

@@ -1,7 +1,7 @@
 use std::io::{self, BufRead};
 
 use pass_man::{
-    add_password, create_new_vault, data_struct::UnlockedVault, load_vault_files, sign_into_vault, utils::retry::{BoolConditionRetry, Retry},
+    add_password, create_new_vault, data_struct::UnlockedVault, load_vault_files, sign_into_vault,
 };
 
 // fn main() {
@@ -14,7 +14,7 @@ use pass_man::{
 //     println!("You entered: {}", input);
 // }
 
-const PROMPT_START_UP: &str = "What would you like to do? \n\
+const MAIN_PROMPT: &str = "What would you like to do? \n\
                                1. Create a new password vault \n\
                                2. Sign in to a password vault \n\
                                3. Add a password to a vault \n\
@@ -22,7 +22,7 @@ const PROMPT_START_UP: &str = "What would you like to do? \n\
                                NOTE: If you have previously signed in, no need to sign in again.
                               ";
 
-fn run() {
+fn run_cli() {
     print_banner();
     loop {
         let _ = prompt();
@@ -39,7 +39,7 @@ fn prompt() -> Result<(), std::io::Error> {
 
     if input == "1" {
         // create new vault
-        let current_vault: UnlockedVault = create_new_vault();
+        let current_vault: UnlockedVault = create_new_vault().unwrap();
     } else if input == "2" {
         // sign in to  a new password vault
         let current_vault = todo!(); // sign_into_vault();
@@ -60,7 +60,7 @@ fn prompt() -> Result<(), std::io::Error> {
         }
 
         eprintln!("[{input}] not recognized.");
-        println!("{}", PROMPT_START_UP);
+        println!("{}", MAIN_PROMPT);
     }
 
     Ok(())
@@ -87,7 +87,7 @@ fn main() {
     let vault_cache = load_vault_files().unwrap();
 
     loop {
-        println!("{}", PROMPT_START_UP);
+        println!("{}", MAIN_PROMPT);
         println!("Found {} Vaults.", vault_cache.0.len());
         let _ = prompt();
     }

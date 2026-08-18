@@ -1,19 +1,35 @@
 use crate::data_struct::LockedVault;
+use crate::data_struct::NONCE_LEN;
+use crate::data_struct::SALT_LEN;
+use crate::data_struct::SALT_NONCE_LEN;
 use crate::data_struct::Secret;
+use crate::data_struct::UnlockError;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
+use crate::utils::DECRYPTION_CHECK_TAG;
 use crate::utils::retry::BoolConditionRetry;
+use crate::utils::retry::ErrCatchingRetry;
 use crate::utils::retry::Retry;
 
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
+use std::vec;
 
 pub mod data_struct;
 pub mod utils;
 
 const STORE_DIR_PATH: &str = ".pass_mgr";
+
+fn validate_passwords(password: &str, confirm: &str) -> bool {
+    let is_mtch = password == confirm;
+    if !is_mtch {
+            println!("passwords do not match");
+    }
+    is_mtch
+}
 
 pub fn create_new_vault() -> Option<UnlockedVault> {
     eprintln!("Creating a new vault...");
@@ -28,29 +44,38 @@ pub fn create_new_vault() -> Option<UnlockedVault> {
     let mut m = BoolConditionRetry::default();
 
     if !(<BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
-        let confirm_password = rpassword::prompt_password("Confirm password:\t").unwrap();
-        println!("passwords do not match");
-        password == confirm_password
+        let confirm = rpassword::prompt_password("Confirm password:\t").unwrap();
+        validate_passwords(&password, &confirm)
     })) {
         println!("Max tries = {} exceeded", 1);
         return None;
     }
 
-    let filename = name.to_owned() + ".cvv";
-    save_file_under_dir(&filename);
     let lv = LockedVault::new(name.to_owned());
-    Some(lv.unlock(password.trim()).expect("unlocking should not fail here"))
+    let filename = name.to_owned() + ".cvv";
+    save_file_under_dir(&filename, &lv);
+    Some(
+        lv.unlock(password.trim())
+            .expect("unlocking should not fail here"),
+    )
 }
 
-fn save_file_under_dir(filename: &str) {
+fn save_file_under_dir(filename: &str, lv: &LockedVault) {
     let path = get_store_dir_path().join(filename);
     match std::fs::File::create(path) {
-        Ok(_) => eprintln!("New Vault create and saved as: {}.cvv", filename),
+        Ok(mut file) => {
+            eprintln!("New Vault create and saved as: {}.cvv", filename);
+            let mut buf: Vec<u8> = vec![];
+            buf.extend_from_slice(lv.get_salt());
+            buf.extend_from_slice(lv.get_nonce());
+            buf.extend_from_slice(DECRYPTION_CHECK_TAG);
+            let _ = file.write_all(&buf); // TODO: ignore errors for now.
+        }
         Err(_) => eprintln!("{}.cvv could not be creaed", filename),
     }
 }
 
-pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error> {
+pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, UnlockError> {
     eprintln!("---------Sign In----------");
     eprintln!("Enter a Vault name: ");
     let mut name = String::new();
@@ -62,27 +87,24 @@ pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, std::io::Error>
     if exist {
         let mut password = String::new();
         eprintln!("Vault with name `{}` found.", name);
-        eprintln!("Enter password for `{}` vault.", name);
-        utils::read_line(&mut password);
 
         // exists succeeds but might fail due to TOCTOU errors with
         // the file.
         let lv: LockedVault = populate_vault(name, filepath).unwrap();
 
-        let password = password.trim();
-
-        let uv = lv.unlock(password);
-        if uv.is_ok() {
-            eprintln!("Thank you, you are now signed in.");
-            return Ok(uv.unwrap());
-        } else {
-            todo!();
-            // some retry logic, to prompt again for answer.
+        let mut err_retry: ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> =
+            ErrCatchingRetry::default();
+        match <ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> as Retry<
+            Result<UnlockedVault, (LockedVault, UnlockError)>,
+        >>::retry(&mut err_retry, || {
+            let password = rpassword::prompt_password("Enter password:\t").unwrap();
+            lv.clone().unlock(&password)
+        }) {
+            Ok(uv) => return Ok(uv),
+            Err((lv, ue)) => todo!(),
         }
     } else {
-        // implement retry logic here
-        todo!()
-        // what does this do here
+        return Err(UnlockError::Io(todo!()));
     }
 }
 
@@ -118,14 +140,15 @@ fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
         };
 
         // we know the unencrypted header is the sum of nonce and salt
-        if buf.len() < 24 {
+        // todo, fix DECRYPTION_CHECK_TAG number and use a standard format for the header
+        if buf.len() < SALT_NONCE_LEN {
             return None;
         }
 
-        let (salt_nonce, cipher) = buf.split_at(24);
-        let (s, n) = salt_nonce.split_at(16);
-        let mut salt: [u8; 16] = [0u8; 16];
-        let mut nonce: [u8; 12] = [0u8; 12];
+        let (salt_nonce, cipher) = buf.split_at(SALT_NONCE_LEN);
+        let (s, n) = salt_nonce.split_at(SALT_LEN);
+        let mut salt: [u8; SALT_LEN] = [0u8; SALT_LEN];
+        let mut nonce: [u8; NONCE_LEN] = [0u8; NONCE_LEN];
 
         salt.copy_from_slice(&s);
         nonce.copy_from_slice(&n);

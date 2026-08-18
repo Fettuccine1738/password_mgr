@@ -10,10 +10,10 @@ const DEFAULT_MS_DELAY: u64 = 500; // ms
 pub trait Retry<T> {
     fn retry<F>(&mut self, f: F) -> T
     where
-        F: Fn() -> T,
-        T: Clone;
+        F: Fn() -> T;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct RetryData {
     pub count_max: u32,
     pub ms_delay: u64,
@@ -75,17 +75,25 @@ impl Retry<bool> for BoolConditionRetry {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug)]
 pub struct ErrCatchingRetry<T, E> {
     data: RetryData,
     _marker: PhantomData<(T, E)>,
+}
+
+impl<T, E> Default for ErrCatchingRetry<T, E> {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            _marker: Default::default(),
+        }
+    }
 }
 
 impl<T, E> Retry<Result<T, E>> for ErrCatchingRetry<T, E> {
     fn retry<F>(&mut self, f: F) -> Result<T, E>
     where
         F: Fn() -> Result<T, E>,
-        Result<T, E>: Clone,
     {
         let mut count = 0u32;
         let mut result: Result<T, E> = f();

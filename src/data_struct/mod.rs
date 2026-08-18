@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::vec;
 
 pub mod vc;
+pub mod input;
 use argon2::Params as Argon2Params;
 use rand_core::OsRng;
 
@@ -13,7 +14,8 @@ pub const SALT_NONCE_LEN: usize = SALT_LEN + NONCE_LEN;
 
 ///
 ///
-#[derive(Debug)]
+/// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
+#[derive(Debug, Clone)]
 pub struct Secret {
     pub id: String,
     pub uname: String,
@@ -71,7 +73,7 @@ use crate::utils::{aes_gcm_decrypt, aes_gcm_encrypt, generate_fresh_nonce};
 
 /// On-disk, pre-authentication state. Holds only public metadata + ciphertext.
 /// No password, no key, no plaintext ever touches this struct.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LockedVault {
     name: String,
     salt: [u8; SALT_LEN],
@@ -124,10 +126,18 @@ impl LockedVault {
             Err(_) => Err((self, UnlockError::WrongPassword)),
         }
     }
+
+    pub fn get_salt(&self) -> &[u8] {
+        &self.salt
+    }
+
+    pub fn get_nonce(&self) -> &[u8] {
+        &self.nonce
+    }
 }
 
 /// Post-authentication state. Exists only in memory, never serialized as-is.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnlockedVault {
     name: String,
     key: [u8; KDF_KEY_LEN], // derived key, kept only for re-encrypting on save
