@@ -6,12 +6,6 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 
-use std::io;
-
-pub fn read_line(buffer: &mut String) {
-    io::stdin().read_line(buffer).expect("Failed to read line");
-}
-
 pub fn hash_password(password: String) -> String {
     let argon2 = Argon2::default();
     let salt = SaltString::generate(&mut OsRng);

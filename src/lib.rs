@@ -6,6 +6,7 @@ use crate::data_struct::Secret;
 use crate::data_struct::UnlockError;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
+use crate::data_struct::input::InputSource;
 use crate::utils::DECRYPTION_CHECK_TAG;
 use crate::utils::retry::BoolConditionRetry;
 use crate::utils::retry::ErrCatchingRetry;
@@ -22,29 +23,30 @@ pub mod data_struct;
 pub mod utils;
 
 const STORE_DIR_PATH: &str = ".pass_mgr";
+const INPUT_NAME_PROMPT: &str = "Enter Vault name: ";
 
 fn validate_passwords(password: &str, confirm: &str) -> bool {
     let is_mtch = password == confirm;
     if !is_mtch {
-            println!("passwords do not match");
+            eprintln!("passwords do not match");
     }
     is_mtch
 }
 
-pub fn create_new_vault() -> Option<UnlockedVault> {
+pub fn create_new_vault(src: &mut impl InputSource) -> Option<UnlockedVault> {
     eprintln!("Creating a new vault...");
     eprintln!("Please provide a name for the vault. NOTE: This can never be changed again:");
-    let mut name = String::new();
-    utils::read_line(&mut name);
+
+    let name = src.read_line(INPUT_NAME_PROMPT);
     let name = name.trim();
 
     eprintln!("Please enter a master password. NOTE: You can change this anytime:");
-    let password: String = rpassword::prompt_password("Please enter password:\t").unwrap();
+    let password: String = src.read_password("Please enter password:\t");
 
     let mut m = BoolConditionRetry::default();
 
     if !(<BoolConditionRetry as Retry<bool>>::retry(&mut m, || {
-        let confirm = rpassword::prompt_password("Confirm password:\t").unwrap();
+        let confirm: String = src.read_password("Confirm password:\t");
         validate_passwords(&password, &confirm)
     })) {
         println!("Max tries = {} exceeded", 1);
@@ -69,35 +71,33 @@ fn save_file_under_dir(filename: &str, lv: &LockedVault) {
             buf.extend_from_slice(lv.get_salt());
             buf.extend_from_slice(lv.get_nonce());
             buf.extend_from_slice(DECRYPTION_CHECK_TAG);
-            let _ = file.write_all(&buf); // TODO: ignore errors for now.
+            let _ = file.write_all(&buf); // TODO: fix errors.
         }
         Err(_) => eprintln!("{}.cvv could not be creaed", filename),
     }
 }
 
-pub fn sign_into_vault(vf: &VaultFiles) -> Result<UnlockedVault, UnlockError> {
+pub fn sign_into_vault(vf: &VaultFiles, src: &mut impl InputSource) -> Result<UnlockedVault, UnlockError> {
     eprintln!("---------Sign In----------");
     eprintln!("Enter a Vault name: ");
-    let mut name = String::new();
-    utils::read_line(&mut name);
+    let name = src.read_line(INPUT_NAME_PROMPT);
     let name = name.trim();
 
     let (exist, filepath) = exists(name, vf);
 
     if exist {
-        let mut password = String::new();
         eprintln!("Vault with name `{}` found.", name);
 
         // exists succeeds but might fail due to TOCTOU errors with
         // the file.
         let lv: LockedVault = populate_vault(name, filepath).unwrap();
-
         let mut err_retry: ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> =
             ErrCatchingRetry::default();
+
         match <ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> as Retry<
             Result<UnlockedVault, (LockedVault, UnlockError)>,
         >>::retry(&mut err_retry, || {
-            let password = rpassword::prompt_password("Enter password:\t").unwrap();
+            let password = src.read_password("Enter password:\t");
             lv.clone().unlock(&password)
         }) {
             Ok(uv) => return Ok(uv),
@@ -140,7 +140,7 @@ fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
         };
 
         // we know the unencrypted header is the sum of nonce and salt
-        // todo, fix DECRYPTION_CHECK_TAG number and use a standard format for the header
+        // TODO, fix DECRYPTION_CHECK_TAG number and use a standard format for the header
         if buf.len() < SALT_NONCE_LEN {
             return None;
         }

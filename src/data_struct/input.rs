@@ -1,15 +1,22 @@
+use std::io;
+
+pub fn read_line(buffer: &mut String) {
+    io::stdin().read_line(buffer).expect("Failed to read line");
+}
+
+
 pub trait InputSource {
     fn read_line(&mut self, prompt: &str) -> String;
     fn read_password(&mut self, prompt: &str) -> String;
 }
 
-pub struct ProdInput;
+pub struct InputSourceImpl;
 
-impl InputSource for ProdInput {
+impl InputSource for InputSourceImpl {
     fn read_line(&mut self, prompt: &str) -> String {
         eprintln!("{}", prompt);
         let mut s = String::new();
-        crate::utils::read_line(&mut s);
+        read_line(&mut s);
         s.trim().to_string()
     }
 

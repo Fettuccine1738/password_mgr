@@ -10,7 +10,7 @@ const DEFAULT_MS_DELAY: u64 = 500; // ms
 pub trait Retry<T> {
     fn retry<F>(&mut self, f: F) -> T
     where
-        F: Fn() -> T;
+        F: FnMut() -> T;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,9 +35,9 @@ pub struct VoidRetry {
 }
 
 impl Retry<()> for VoidRetry {
-    fn retry<F>(&mut self, f: F)
+    fn retry<F>(&mut self, mut f: F)
     where
-        F: Fn() -> (),
+        F: FnMut() -> (),
         (): Clone,
     {
         let mut count = 0;
@@ -57,9 +57,9 @@ pub struct BoolConditionRetry {
 }
 
 impl Retry<bool> for BoolConditionRetry {
-    fn retry<F>(&mut self, f: F) -> bool
+    fn retry<F>(&mut self, mut f: F) -> bool
     where
-        F: Fn() -> bool,
+        F: FnMut() -> bool,
         bool: Clone,
     {
         let mut count = 0u32;
@@ -91,9 +91,9 @@ impl<T, E> Default for ErrCatchingRetry<T, E> {
 }
 
 impl<T, E> Retry<Result<T, E>> for ErrCatchingRetry<T, E> {
-    fn retry<F>(&mut self, f: F) -> Result<T, E>
+    fn retry<F>(&mut self, mut f: F) -> Result<T, E>
     where
-        F: Fn() -> Result<T, E>,
+        F: FnMut() -> Result<T, E>,
     {
         let mut count = 0u32;
         let mut result: Result<T, E> = f();
@@ -108,6 +108,6 @@ impl<T, E> Retry<Result<T, E>> for ErrCatchingRetry<T, E> {
     }
 }
 
-pub struct BoolOrErrCatchingRetry {
-    data: RetryData,
-}
+// pub struct BoolOrErrCatchingRetry {
+//     data: RetryData,
+// }

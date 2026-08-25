@@ -1,7 +1,7 @@
 use std::io::{self, BufRead};
 
 use pass_man::{
-    add_password, create_new_vault, data_struct::UnlockedVault, load_vault_files, sign_into_vault,
+    add_password, create_new_vault, data_struct::{UnlockedVault, input::InputSourceImpl}, load_vault_files, sign_into_vault,
 };
 
 // fn main() {
@@ -36,10 +36,11 @@ fn prompt() -> Result<(), std::io::Error> {
         .expect("Failed to read line");
 
     let input = input.trim();
+    let mut input_src = InputSourceImpl;
 
     if input == "1" {
         // create new vault
-        let current_vault: UnlockedVault = create_new_vault().unwrap();
+        let current_vault: UnlockedVault = create_new_vault(&mut input_src).unwrap();
     } else if input == "2" {
         // sign in to  a new password vault
         let current_vault = todo!(); // sign_into_vault();
