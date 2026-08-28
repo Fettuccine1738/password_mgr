@@ -3,6 +3,7 @@ use crate::data_struct::NONCE_LEN;
 use crate::data_struct::SALT_LEN;
 use crate::data_struct::SALT_NONCE_LEN;
 use crate::data_struct::Secret;
+use crate::data_struct::SignInError;
 use crate::data_struct::UnlockError;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
@@ -16,6 +17,7 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use std::io::Sink;
 use std::io::Write;
 use std::path::PathBuf;
 use std::vec;
@@ -58,7 +60,7 @@ pub fn create_new_vault(src: &mut impl InputSource) -> UnlockedVault {
     UnlockedVault::for_new_vault(name.to_owned(), &password)
 }
 
-/// Only a locked vault can be saved and written to storage 
+/// Only a locked vault can be saved and written to storage
 fn save_locked_vault_as_file(filename: &str, lv: &LockedVault) {
     let path = get_store_dir_path().join(filename);
     match std::fs::File::create(path) {
@@ -77,7 +79,7 @@ fn save_locked_vault_as_file(filename: &str, lv: &LockedVault) {
 pub fn sign_into_vault(
     vf: &VaultFiles,
     src: &mut impl InputSource,
-) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
+) -> Result<UnlockedVault, SignInError> {
     eprintln!("---------Sign In----------");
     eprintln!("Enter a Vault name: ");
     let name = src.read_line(INPUT_NAME_PROMPT);
@@ -86,25 +88,25 @@ pub fn sign_into_vault(
     let filepath = exists(name, vf);
 
     if filepath.is_empty() {
-        return Err(UnlockError::Io(io::Error));
-    } 
-        eprintln!("Vault with name `{}` found.", name);
+        return Err(SignInError::NotFound);
+    }
+    eprintln!("Vault with name `{}` found.", name);
 
-        // exists succeeds but might fail due to TOCTOU errors with
-        // the file.
-        let lv: LockedVault = populate_vault(name, filepath).unwrap();
-        let mut err_retry: ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> =
-            ErrCatchingRetry::default();
+    // exists succeeds but might fail due to TOCTOU errors with
+    // the file.
+    let lv: LockedVault = populate_vault(&filepath, name.to_owned()).unwrap();
+    let mut err_retry: ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> =
+        ErrCatchingRetry::default();
 
-        match <ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> as Retry<
-            Result<UnlockedVault, (LockedVault, UnlockError)>,
-        >>::retry(&mut err_retry, || {
-            let password = src.read_password("Enter password:\t");
-            lv.clone().unlock(&password)
-        }) {
-            Ok(uv) => return Ok(uv),
-            Err((lv, ue)) => todo!(),
-        }
+    match <ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> as Retry<
+        Result<UnlockedVault, (LockedVault, UnlockError)>,
+    >>::retry(&mut err_retry, || {
+        let password = src.read_password("Enter password:\t");
+        lv.clone().unlock(&password)
+    }) {
+        Ok(uv) => return Ok(uv),
+        Err((lv, ue)) => Err(SignInError::Unlock(lv, ue)),
+    }
 }
 
 pub fn exists(name: &str, vf: &VaultFiles) -> String {
@@ -127,10 +129,8 @@ pub fn exists(name: &str, vf: &VaultFiles) -> String {
     String::new()
 }
 
-fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
+pub fn populate_vault(path: &str, vault_name: String) -> Option<LockedVault> {
     if let Ok(mut file) = File::open(path) {
-        // let bytes = file.bytes();
-        // let data = bytes.flat_map(|b| b.ok()).collect::<Vec<u8>>();
         let mut buf = vec![];
         match file.read_to_end(&mut buf) {
             Ok(_) => (),
@@ -150,7 +150,7 @@ fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
         salt.copy_from_slice(&s);
         nonce.copy_from_slice(&n);
 
-        return Some(LockedVault::init(name, salt, nonce, cipher));
+        return Some(LockedVault::init(vault_name, salt, nonce, cipher));
     }
 
     None

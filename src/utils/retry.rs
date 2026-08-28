@@ -22,8 +22,9 @@ pub trait Retry<T> {
         self.retry_data().ms_delay
     }
 
-    fn retry<F>(&mut self, mut f: F) -> T 
-    where F: FnMut() -> T,
+    fn retry<F>(&mut self, mut f: F) -> T
+    where
+        F: FnMut() -> T,
     {
         let max = self.get_tries_max();
         let delay = self.get_delay_max();

@@ -32,7 +32,7 @@ fn prompt() -> Result<(), std::io::Error> {
 
     if input == "1" {
         // create new vault
-        let current_vault: UnlockedVault = create_new_vault(&mut input_src).unwrap();
+        let current_vault: UnlockedVault = create_new_vault(&mut input_src);
     } else if input == "2" {
         // sign in to  a new password vault
         let current_vault = todo!(); // sign_into_vault();

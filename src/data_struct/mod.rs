@@ -68,6 +68,12 @@ pub enum UnlockError {
     Io(std::io::Error),
 }
 
+#[derive(Debug)]
+pub enum SignInError {
+    NotFound,
+    Unlock(LockedVault, UnlockError),
+}
+
 use crate::data_struct::vc::VaultContents;
 use crate::utils::{aes_gcm_decrypt, aes_gcm_encrypt, generate_fresh_nonce};
 
@@ -167,7 +173,7 @@ pub struct UnlockedVault {
 }
 
 impl UnlockedVault {
-    /// called when instantiating a new Vault, avoiding creating then unlocking 
+    /// called when instantiating a new Vault, avoiding creating then unlocking
     /// a `LockedVault`.
     pub fn for_new_vault(name: String, password: &str) -> Self {
         let mut salt = [0u8; SALT_LEN];
