@@ -4,7 +4,6 @@ pub fn read_line(buffer: &mut String) {
     io::stdin().read_line(buffer).expect("Failed to read line");
 }
 
-
 pub trait InputSource {
     fn read_line(&mut self, prompt: &str) -> String;
     fn read_password(&mut self, prompt: &str) -> String;
@@ -24,7 +23,6 @@ impl InputSource for InputSourceImpl {
         rpassword::prompt_password(prompt).unwrap()
     }
 }
-
 
 #[cfg(test)]
 pub struct MockInput {

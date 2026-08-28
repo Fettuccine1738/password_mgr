@@ -1,7 +1,7 @@
 use super::Secret;
 use crate::utils::DECRYPTION_CHECK_TAG;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VaultContents {
     pub secrets: Vec<Secret>,
 }
@@ -47,10 +47,9 @@ impl VaultContents {
                     out.extend_from_slice(&(h_bytes.len() as u32).to_le_bytes());
                     out.extend_from_slice(h_bytes);
                 }
-                None => out.extend([0]), // no id == 0 exists so thats fine.
+                None => out.extend_from_slice(&(0u32).to_le_bytes()), // no id == 0 exists so thats fine.
             }
         }
-
         out
     }
 
@@ -60,12 +59,6 @@ impl VaultContents {
         }
 
         let mut pos = 4;
-
-        // salt and nonce is added as an unencrypted header to the file.
-
-        // let salt: [u8; 16] = read_u8_chunks(data, &mut pos, 16).unwrap();
-        // let mut nonce: [u8; 12] = [0u8; 12];
-        // nonce.copy_from_slice(&read_u8_chunks(data, &mut pos, 12).unwrap()[..12]);
 
         let count = u32::from_le_bytes(data[pos..pos + 4].try_into().map_err(|_| ())?);
         pos += 4;

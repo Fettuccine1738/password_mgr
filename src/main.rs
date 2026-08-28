@@ -1,18 +1,10 @@
 use std::io::{self, BufRead};
 
 use pass_man::{
-    add_password, create_new_vault, data_struct::{UnlockedVault, input::InputSourceImpl}, load_vault_files, sign_into_vault,
+    add_password, create_new_vault,
+    data_struct::{UnlockedVault, input::InputSourceImpl},
+    load_vault_files, sign_into_vault,
 };
-
-// fn main() {
-//     let mut input = String::new();
-//     io::stdin()
-//         .read_line(&mut input)
-//         .expect("Failed to read line");
-
-//     let input = input.trim(); // remove trailing newline
-//     println!("You entered: {}", input);
-// }
 
 const MAIN_PROMPT: &str = "What would you like to do? \n\
                                1. Create a new password vault \n\

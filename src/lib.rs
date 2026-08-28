@@ -14,6 +14,7 @@ use crate::utils::retry::Retry;
 
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
@@ -24,16 +25,17 @@ pub mod utils;
 
 const STORE_DIR_PATH: &str = ".pass_mgr";
 const INPUT_NAME_PROMPT: &str = "Enter Vault name: ";
+const EXIT_CODE_WRONG_PASSWORD: i32 = 67;
 
 fn validate_passwords(password: &str, confirm: &str) -> bool {
     let is_mtch = password == confirm;
     if !is_mtch {
-            eprintln!("passwords do not match");
+        eprintln!("passwords do not match");
     }
     is_mtch
 }
 
-pub fn create_new_vault(src: &mut impl InputSource) -> Option<UnlockedVault> {
+pub fn create_new_vault(src: &mut impl InputSource) -> UnlockedVault {
     eprintln!("Creating a new vault...");
     eprintln!("Please provide a name for the vault. NOTE: This can never be changed again:");
 
@@ -49,20 +51,15 @@ pub fn create_new_vault(src: &mut impl InputSource) -> Option<UnlockedVault> {
         let confirm: String = src.read_password("Confirm password:\t");
         validate_passwords(&password, &confirm)
     })) {
-        println!("Max tries = {} exceeded", 1);
-        return None;
+        println!("Max tries = {} exceeded", m.get_tries_max());
+        std::process::exit(EXIT_CODE_WRONG_PASSWORD);
     }
 
-    let lv = LockedVault::new(name.to_owned());
-    let filename = name.to_owned() + ".cvv";
-    save_file_under_dir(&filename, &lv);
-    Some(
-        lv.unlock(password.trim())
-            .expect("unlocking should not fail here"),
-    )
+    UnlockedVault::for_new_vault(name.to_owned(), &password)
 }
 
-fn save_file_under_dir(filename: &str, lv: &LockedVault) {
+/// Only a locked vault can be saved and written to storage 
+fn save_locked_vault_as_file(filename: &str, lv: &LockedVault) {
     let path = get_store_dir_path().join(filename);
     match std::fs::File::create(path) {
         Ok(mut file) => {
@@ -71,21 +68,26 @@ fn save_file_under_dir(filename: &str, lv: &LockedVault) {
             buf.extend_from_slice(lv.get_salt());
             buf.extend_from_slice(lv.get_nonce());
             buf.extend_from_slice(DECRYPTION_CHECK_TAG);
-            let _ = file.write_all(&buf); // TODO: fix errors.
+            let _ = file.write_all(&buf); // TODO: fix  possible errors.
         }
         Err(_) => eprintln!("{}.cvv could not be creaed", filename),
     }
 }
 
-pub fn sign_into_vault(vf: &VaultFiles, src: &mut impl InputSource) -> Result<UnlockedVault, UnlockError> {
+pub fn sign_into_vault(
+    vf: &VaultFiles,
+    src: &mut impl InputSource,
+) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
     eprintln!("---------Sign In----------");
     eprintln!("Enter a Vault name: ");
     let name = src.read_line(INPUT_NAME_PROMPT);
     let name = name.trim();
 
-    let (exist, filepath) = exists(name, vf);
+    let filepath = exists(name, vf);
 
-    if exist {
+    if filepath.is_empty() {
+        return Err(UnlockError::Io(io::Error));
+    } 
         eprintln!("Vault with name `{}` found.", name);
 
         // exists succeeds but might fail due to TOCTOU errors with
@@ -103,12 +105,9 @@ pub fn sign_into_vault(vf: &VaultFiles, src: &mut impl InputSource) -> Result<Un
             Ok(uv) => return Ok(uv),
             Err((lv, ue)) => todo!(),
         }
-    } else {
-        return Err(UnlockError::Io(todo!()));
-    }
 }
 
-pub fn exists(name: &str, vf: &VaultFiles) -> (bool, String) {
+pub fn exists(name: &str, vf: &VaultFiles) -> String {
     let base = get_store_dir_path();
 
     for path in &vf.0 {
@@ -121,12 +120,11 @@ pub fn exists(name: &str, vf: &VaultFiles) -> (bool, String) {
         );
 
         if token.to_str().unwrap() == name {
-            // return populate_vault(path);
-            return (true, path.to_str().unwrap().to_string());
+            return path.to_str().unwrap().to_string();
         }
     }
 
-    (false, String::new())
+    String::new()
 }
 
 fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
@@ -140,7 +138,6 @@ fn populate_vault(path: &str, name: String) -> Option<LockedVault> {
         };
 
         // we know the unencrypted header is the sum of nonce and salt
-        // TODO, fix DECRYPTION_CHECK_TAG number and use a standard format for the header
         if buf.len() < SALT_NONCE_LEN {
             return None;
         }

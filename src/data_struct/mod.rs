@@ -1,9 +1,9 @@
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 use std::path::PathBuf;
 use std::vec;
 
-pub mod vc;
 pub mod input;
+pub mod vc;
 use argon2::Params as Argon2Params;
 use rand_core::OsRng;
 
@@ -15,7 +15,7 @@ pub const SALT_NONCE_LEN: usize = SALT_LEN + NONCE_LEN;
 ///
 ///
 /// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
-#[derive(Debug, Clone)]
+#[derive(Eq, Debug, Clone)]
 pub struct Secret {
     pub id: String,
     pub uname: String,
@@ -36,11 +36,11 @@ impl Display for Secret {
 }
 
 impl Secret {
-    pub fn new(id: String, uname: String, secretword: String, hint: Option<String>) -> Self {
+    pub fn new(id: String, uname: String, secret: String, hint: Option<String>) -> Self {
         Self {
             id,
             uname,
-            secret: secretword,
+            secret,
             hint,
         }
     }
@@ -85,7 +85,7 @@ pub struct LockedVault {
 impl LockedVault {
     pub fn new(name: String) -> Self {
         let mut salt = [0u8; SALT_LEN];
-        let mut nonce = [0u8; NONCE_LEN];
+        let mut nonce = generate_fresh_nonce();
         rand_core::RngCore::fill_bytes(&mut OsRng, &mut salt);
         rand_core::RngCore::fill_bytes(&mut OsRng, &mut nonce);
 
@@ -108,10 +108,26 @@ impl LockedVault {
         }
     }
 
+    /// Unlocks a newly created instance of `LockedVault`
+    /// unlike `unlock`. This cannot fail because this is only a type-state transition
+    /// with no extra operations.
+    pub fn unlock_new(self, password: &str) -> UnlockedVault {
+        let key: [u8; 32] =
+            crate::utils::derive_key(password.as_bytes(), &self.salt, &self.kdf_params);
+        UnlockedVault {
+            name: self.name,
+            key,
+            salt: self.salt,
+            kdf_params: self.kdf_params,
+            secrets: VaultContents { secrets: vec![] },
+        }
+    }
+
     pub fn unlock(self, password: &str) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
         let key: [u8; 32] =
             crate::utils::derive_key(password.as_bytes(), &self.salt, &self.kdf_params);
 
+        // to decrypt gcm needs the exact keystream (and nonce) used for encryption
         match aes_gcm_decrypt(&key, &self.nonce, &self.ciphertext) {
             Ok(plaintext) => match VaultContents::deserialize(&plaintext) {
                 Ok(secrets) => Ok(UnlockedVault {
@@ -134,6 +150,10 @@ impl LockedVault {
     pub fn get_nonce(&self) -> &[u8] {
         &self.nonce
     }
+
+    pub fn write<W: Write>(lv: LockedVault, w: W) -> Vec<u8> {
+        vec![]
+    }
 }
 
 /// Post-authentication state. Exists only in memory, never serialized as-is.
@@ -147,7 +167,28 @@ pub struct UnlockedVault {
 }
 
 impl UnlockedVault {
+    /// called when instantiating a new Vault, avoiding creating then unlocking 
+    /// a `LockedVault`.
+    pub fn for_new_vault(name: String, password: &str) -> Self {
+        let mut salt = [0u8; SALT_LEN];
+        let mut nonce = generate_fresh_nonce();
+        rand_core::RngCore::fill_bytes(&mut OsRng, &mut salt);
+        rand_core::RngCore::fill_bytes(&mut OsRng, &mut nonce);
+
+        let key: [u8; 32] =
+            crate::utils::derive_key(password.as_bytes(), &salt, &Argon2Params::DEFAULT);
+        Self {
+            name,
+            key,
+            salt,
+            kdf_params: Argon2Params::DEFAULT,
+            secrets: VaultContents { secrets: vec![] },
+        }
+    }
+
     /// Re-encrypts and returns a LockedVault ready to persist.
+    /// NOTE: Calling lock generates a nonce that will be used to reconstruct
+    /// the keysteream for decryption
     pub fn lock(self) -> LockedVault {
         let nonce = generate_fresh_nonce(); // NEVER reuse a nonce with the same key
         let plaintext = self.secrets.serialize();

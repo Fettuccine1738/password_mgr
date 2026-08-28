@@ -8,9 +8,37 @@ const DEFAULT_MS_DELAY: u64 = 500; // ms
 ///
 ///
 pub trait Retry<T> {
-    fn retry<F>(&mut self, f: F) -> T
-    where
-        F: FnMut() -> T;
+    fn retry_data(&self) -> &RetryData;
+
+    // fn retry<F>(&mut self, f: F) -> T
+    // where
+    //     F: FnMut() -> T;
+
+    fn get_tries_max(&self) -> u32 {
+        self.retry_data().count_max
+    }
+
+    fn get_delay_max(&self) -> u64 {
+        self.retry_data().ms_delay
+    }
+
+    fn retry<F>(&mut self, mut f: F) -> T 
+    where F: FnMut() -> T,
+    {
+        let max = self.get_tries_max();
+        let delay = self.get_delay_max();
+
+        let mut result = f();
+        let mut count = 1;
+
+        while count < max {
+            thread::sleep(Duration::from_millis(delay));
+            result = f();
+            count += 1;
+        }
+
+        result
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,19 +63,8 @@ pub struct VoidRetry {
 }
 
 impl Retry<()> for VoidRetry {
-    fn retry<F>(&mut self, mut f: F)
-    where
-        F: FnMut() -> (),
-        (): Clone,
-    {
-        let mut count = 0;
-
-        while count < self.data.count_max {
-            let _ = f();
-            thread::sleep(Duration::from_millis(self.data.ms_delay));
-            count += 1;
-        }
-        ()
+    fn retry_data(&self) -> &RetryData {
+        &self.data
     }
 }
 
@@ -60,7 +77,6 @@ impl Retry<bool> for BoolConditionRetry {
     fn retry<F>(&mut self, mut f: F) -> bool
     where
         F: FnMut() -> bool,
-        bool: Clone,
     {
         let mut count = 0u32;
         let mut result: bool = f(); // result of calling this function the first time
@@ -72,6 +88,10 @@ impl Retry<bool> for BoolConditionRetry {
         }
 
         result
+    }
+
+    fn retry_data(&self) -> &RetryData {
+        &self.data
     }
 }
 
@@ -91,6 +111,10 @@ impl<T, E> Default for ErrCatchingRetry<T, E> {
 }
 
 impl<T, E> Retry<Result<T, E>> for ErrCatchingRetry<T, E> {
+    fn retry_data(&self) -> &RetryData {
+        &self.data
+    }
+
     fn retry<F>(&mut self, mut f: F) -> Result<T, E>
     where
         F: FnMut() -> Result<T, E>,
