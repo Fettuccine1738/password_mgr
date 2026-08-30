@@ -39,7 +39,7 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
         // create new vault
         *vault_state = match create_new_vault(input_src) {
             Some(uv) => VaultState::Unlocked(uv),
-            None => { // TODO: We don't want to exit here 
+            None => {  
                 eprintln!("Could not create vault");
                 VaultState::Limbo
             }
