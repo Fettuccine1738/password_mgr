@@ -12,6 +12,8 @@ const MAIN_PROMPT: &str = "What would you like to do? \n\
                                2. Sign in to a password vault \n\
                                3. Add a password to a vault \n\
                                4. Fetch a password from a vault \n\
+                               5. Sign out of the current vault \n\
+                               6. Quit \n\
                                NOTE: If you have previously signed in, no need to sign in again.
                               ";
 
@@ -38,7 +40,10 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
     if input == "1" {
         // create new vault
         *vault_state = match create_new_vault(input_src) {
-            Some(uv) => VaultState::Unlocked(uv),
+            Some(uv) => {
+                eprintln!("Vault created succesfully");
+                VaultState::Unlocked(uv)
+            }
             None => {  
                 eprintln!("Could not create vault");
                 VaultState::Limbo
@@ -51,8 +56,16 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
         let new_state = VaultState::transition(state, input_src); // modify 
         *vault_state = new_state; // return
     } else if input == "3" {
+        // Some of secret's fields are optional, but we will require all of them for now.
+        // i.e store a secret not associated with a website, but we will require a name and password.
+        // e.g store a secret for a bank account, but not associated with a website.
+        if let VaultState::Limbo = *vault_state {
+            eprintln!("No unlocked vault, sign in first");
+            return Ok(());
+        }
+        
         let name = input_src.read_line("Add name or email for secret: ");
-        let passw = input_src.read_line("Add password: ");
+        let passw = input_src.read_password("Add password: ");
         let website = input_src.read_line("Add website (without https://): ");
         let w = if website.is_empty() {
             None
@@ -66,25 +79,33 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
             website: w
         };
 
-        if !VaultState::add_password(vault_state, s) {
-            eprintln!("No unlocked vault-sign in first");
+        // if secret_exist prompt for y/n update
+        // then lock and write.
+
+        // TODO: stopped here, handle logic to write immediately
+        match VaultState::add_password(vault_state, s) {
+            Some(false) => todo!(),
+            Some(true) => (), 
+            None => eprintln!("No unlocked vault-sign in first"),
         }
     } else if input == "4" {
         match VaultState::fetch_password_for_website(vault_state, input_src) {
             Some(secret) => println!("{}", secret), // relies on Secret's Display impl
             None => eprintln!("No unlocked vault, or no match found."),
         }
+    } else if input == "5" {
+        eprintln!("Signing out of current vault");
+        *vault_state = VaultState::Limbo;
     } else {
         let input = &input.to_lowercase();
         if input == "q" || input == "quit" || input == "Quit" {
             // clean up
             eprintln!("exiting.....");
             std::process::exit(0);
-        } else if input == "signout" {
-            eprintln!("Signing out of current vault");
+        } else {
+            eprintln!("[{input}] not recognized.");
+            println!("{}", MAIN_PROMPT);
         }
-        eprintln!("[{input}] not recognized.");
-        println!("{}", MAIN_PROMPT);
     }
     Ok(())
 }

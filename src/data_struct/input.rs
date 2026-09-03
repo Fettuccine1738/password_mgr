@@ -13,7 +13,7 @@ pub struct InputSourceImpl;
 
 impl InputSource for InputSourceImpl {
     fn read_line(&mut self, prompt: &str) -> String {
-        eprintln!("{}", prompt);
+        eprint!("{}", prompt);
         let mut s = String::new();
         read_line(&mut s);
         s.trim().to_string()

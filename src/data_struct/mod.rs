@@ -74,15 +74,19 @@ impl VaultState {
             }
             Self::Unlocked(u) => Self::Locked(u.lock()),
             Self::Limbo => Self::Limbo
-    }
-    }
-
-    pub fn add_password(&mut self, secret: Secret) -> bool {
-        match self {
-            Self::Unlocked(ul) => ul.add_secret(secret),
-            _ => false
         }
     }
+
+    // returns None if password is not in the UNlocked state 
+    // returns true if this operation updates a secret
+    // false if this is a new entry. 
+    pub fn add_password(&mut self, secret: Secret) -> Option<bool> {
+        match self {
+            Self::Unlocked(ul) => Some(ul.add_secret(secret)),
+            _ => None
+        }
+    }
+    // prompt callback -> if it is  an update -> Fn() -> String 
 
     pub fn fetch_password_for_website(&mut self, input_src: &mut impl InputSource) -> Option<Secret> {
         match self {
@@ -216,8 +220,23 @@ pub struct UnlockedVault {
 
 impl UnlockedVault {
     pub fn add_secret(&mut self, s: Secret) -> bool {
+        let idx = {
+            let mut idx = 0;
+            for  scrt in &self.secrets.cntnt {
+                if *scrt == s {
+                    break;
+                }
+                idx += 1;
+            }
+            idx
+        };
+
+        if idx < self.secrets.cntnt.len() {
+            self.secrets.cntnt[idx] = s;
+            return true;
+        }  
         self.secrets.cntnt.push(s);
-        false // TODO: logic to check if this is a new insert or update op
+        false
     }
 
     // TODO: Use hash for O(1)
@@ -258,6 +277,21 @@ impl UnlockedVault {
             salt,
             kdf_params: Argon2Params::DEFAULT,
             secrets: VaultContents { cntnt: vec![] },
+        }
+    }
+    /// Produces a locked snapshot for persisting, without consuming self —
+    /// the vault stays unlocked in memory for further edits.
+    pub fn snapshot_locked(&self) -> LockedVault {
+        let nonce = generate_fresh_nonce(); // never reuse, even across snapshots
+        let plaintext = self.secrets.serialize();
+        let ciphertext = aes_gcm_encrypt(&self.key, &nonce, &plaintext);
+
+        LockedVault {
+            name: self.name.clone(),
+            salt: self.salt,
+            kdf_params: self.kdf_params.clone(),
+            nonce,
+            ciphertext,
         }
     }
 
