@@ -2,13 +2,13 @@ use crate::data_struct::LockedVault;
 use crate::data_struct::NONCE_LEN;
 use crate::data_struct::SALT_LEN;
 use crate::data_struct::SALT_NONCE_LEN;
-use crate::data_struct::Secret;
 use crate::data_struct::SignInError;
 use crate::data_struct::UnlockError;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
 use crate::data_struct::VaultState;
 use crate::data_struct::input::InputSource;
+use crate::data_struct::vc::Secret;
 use crate::utils::retry::BoolConditionRetry;
 use crate::utils::retry::ErrCatchingRetry;
 use crate::utils::retry::Retry;
@@ -67,7 +67,7 @@ pub fn create_new_vault(src: &mut impl InputSource) -> Option<UnlockedVault> {
     Some(UnlockedVault::for_new_vault(name.to_owned(), &password))
 }
 
-fn write_locked_vault_to_file(filename: &str, lv: &LockedVault) -> io::Result<()> {
+fn write_to_disk(filename: &str, lv: &LockedVault) -> io::Result<()> {
     let dir = get_store_dir_path();
     let final_path = dir.join(filename);
     let temp_path = dir.join(format!("{filename}.tmp"));

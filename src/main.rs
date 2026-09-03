@@ -1,15 +1,10 @@
-use std::io::BufRead;
-
 use pass_man::{
-    create_new_vault,
-    data_struct::{
-        Secret, VaultFiles, VaultState,
-        input::{InputSource, InputSourceImpl},
-    },
-    load_vault_files,
+    create_new_vault, data_struct::{
+        VaultFiles, VaultState, input::{InputSource, InputSourceImpl}, vc::Secret,
+    }, load_vault_files,
 };
 
-const EXIT_CODE_WRONG_PASSWORD: i32 = 67;
+const _EXIT_CODE_WRONG_PASSWORD: i32 = 67;
 const MAIN_PROMPT: &str = "What would you like to do? \n\
                                1. Create a new password vault \n\
                                2. Sign in to a password vault \n\
@@ -74,29 +69,20 @@ fn prompt(
         let name = input_src.read_line("Add name or email for secret: ");
         let passw = input_src.read_password("Add password: ");
         let website = input_src.read_line("Add website (without https://): ");
-        let w = if website.is_empty() {
-            None
-        } else {
-            Some(website)
-        };
 
-        // let err_retry: ErrCatchingRetry<Result<String, io::Error>> = ErrCatchingRetry::default();
-        let s = Secret {
-            id: String::new(), // TODO: figure out what ID means for us
-            uname: name,
-            secret: passw,
-            website: w,
-        };
-
-        // if secret_exist prompt for y/n update
-        // then lock and write.
-
-        // TODO: stopped here, handle logic to write immediately
-        match VaultState::add_password(vault_state, s) {
-            Some(false) => todo!(),
-            Some(true) => (),
-            None => eprintln!("No unlocked vault-sign in first"),
-        }
+        // validate secret here, easier logic than we can do in Secret::validate,
+        //  since we have all the fields here.
+        match Secret::validate_and_return(passw, name, website) {
+            Ok(s) => {
+                if vault_state.add_password(s) {
+                    let _ = vault_state.lock_and_write();
+                    eprintln!("Password added successfully");
+                } else {
+                    eprintln!("Password already exists, not added");
+                }
+            },            
+            Err(msg) => eprintln!("Invalid secret: {}", msg ),
+        }; 
     } else if input == "4" {
         match VaultState::fetch_password_for_website(vault_state, input_src) {
             Some(secret) => println!("{}", secret), // relies on Secret's Display impl

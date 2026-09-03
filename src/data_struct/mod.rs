@@ -1,11 +1,10 @@
-use std::fmt::{Display, Write};
+use std::fmt::Write;
 use std::path::PathBuf;
 use std::vec;
 
 pub mod input;
 pub mod vc;
 
-use crate::utils::retry::{self, ErrCatchingRetry};
 use argon2::Params as Argon2Params;
 use rand_core::OsRng;
 
@@ -13,60 +12,6 @@ pub const SALT_LEN: usize = 16;
 pub const NONCE_LEN: usize = 12;
 pub const KDF_KEY_LEN: usize = 32;
 pub const SALT_NONCE_LEN: usize = SALT_LEN + NONCE_LEN;
-
-///
-///
-/// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
-#[derive(Eq, Debug, Clone)]
-pub struct Secret {
-    pub id: String,
-    pub uname: String,
-    pub secret: String,
-    pub website: Option<String>,
-}
-
-impl Display for Secret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let _ = write!(f, "password = ************************************");
-        let _ = write!(f, "passphrase = ");
-        if let Some(s) = &self.website {
-            write!(f, "{}", s)
-        } else {
-            write!(f, "<NO Passphrase set for this>")
-        }
-    }
-}
-
-impl Secret {
-    pub fn new(id: String, uname: String, secret: String, website: Option<String>) -> Self {
-        Self {
-            id,
-            uname,
-            secret,
-            website,
-        }
-    }
-
-    // TODO: validate the secret, e.g. website is a valid URL, or empty
-    // website and uname can be empty, but not both
-    pub fn validate(secret: &Secret) -> Result<(), String> {
-        if secret.secret.is_empty() {
-            return Err("Secret cannot be empty".to_string());
-        }
-        // TODO: validate website is a valid URL, or empty
-        // website and uname can be empty, but not both
-        if secret.uname.is_empty() && secret.website.is_none() {
-            return Err("Either username or website must be provided".to_string());
-        }
-        Ok(())
-    }
-}
-
-impl PartialEq for Secret {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.uname == other.uname
-    }
-}
 
 #[derive(Debug, Default)]
 pub enum VaultState {
@@ -91,22 +36,27 @@ impl VaultState {
         }
     }
 
+    pub fn lock_and_write(&mut self) -> Result<(), std::io::Error> {
+        match self {
+            Self::Unlocked(uv) => {
+                let filename = uv.get_name();
+                let locked = uv.snapshot();
+                super::write_to_disk(filename, &locked)?;
+                Ok(())
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Vault is not unlocked",
+            )),
+        }
+    }
     // returns false if secret was not added, true if it was added or updated
     pub fn add_password(&mut self, secret: Secret) -> bool {
         match self {
             Self::Unlocked(ul) => {
-                match Secret::validate(&secret) {
-                    // verify password field is not empty and (either website or username is provided)
-                    Ok(_) => (),
-                    Err(e) => {
-                        eprintln!("Invalid secret: {}", e);
-                        return false;
-                    }
-                }
-
                 // verify if secret already exists, if so prompt for update
                 if let Some(existing_secret) =
-                    ul.fetch_secret_for_website(secret.website.as_ref().unwrap())
+                    ul.fetch_secret_for_website_mut(secret.website.as_ref().unwrap())
                 {
                     // let mut rtry: ErrCatchingRetry<bool, ()> = retry::ErrCatchingRetry::default();
                     let mut input_src = InputSourceImpl; // to satisfy the borrow checker
@@ -134,7 +84,7 @@ impl VaultState {
     pub fn fetch_password_for_website(
         &mut self,
         input_src: &mut impl InputSource,
-    ) -> Option<Secret> {
+    ) -> Option<&Secret> {
         match self {
             Self::Unlocked(ul) => {
                 let website = input_src.read_line("Enter website (without https://)");
@@ -162,7 +112,7 @@ pub enum SignInError {
 }
 
 use crate::data_struct::input::{InputSource, InputSourceImpl};
-use crate::data_struct::vc::VaultContents;
+use crate::data_struct::vc::{Secret, VaultContents};
 use crate::utils::{aes_gcm_decrypt, aes_gcm_encrypt, generate_fresh_nonce};
 
 /// On-disk, pre-authentication state. Holds only public metadata + ciphertext.
@@ -292,7 +242,20 @@ impl UnlockedVault {
     // TODO: Use hash for O(1)
     // we must maintain the invariant that a website can only have one secret associated with it,
     // so we can use the website as a key to fetch the secret. Also, we can use the website as a key to update the secret.
-    pub fn fetch_secret_for_website(&mut self, website: &str) -> Option<&mut Secret> {
+    pub fn fetch_secret_for_website(&self, website: &str) -> Option<&Secret> {
+        for s in &self.secrets.cntnt {
+            if s.website.is_none() {
+                continue;
+            }
+
+            if s.website.as_ref().unwrap() == website {
+                return Some(s);
+            }
+        }
+        None
+    }
+
+    pub fn fetch_secret_for_website_mut(&mut self, website: &str) -> Option<&mut Secret> {
         for s in &mut self.secrets.cntnt {
             if s.website.is_none() {
                 continue;
@@ -319,7 +282,7 @@ impl UnlockedVault {
         let like = like.to_lowercase();
         let mut found = vec![];
         for s in &self.secrets.cntnt {
-            if s.uname.contains(&like)
+            if (s.uname.is_some() && s.uname.as_ref().unwrap().contains(&like))
                 || (s.website.is_some() && s.website.as_ref().unwrap().contains(&like))
             {
                 found.push(s.clone()); // TODO: return a reference instead of cloning
@@ -352,7 +315,7 @@ impl UnlockedVault {
     }
     /// Produces a locked snapshot for persisting, without consuming self —
     /// the vault stays unlocked in memory for further edits.
-    pub fn snapshot_locked(&self) -> LockedVault {
+    pub fn snapshot(&self) -> LockedVault {
         let nonce = generate_fresh_nonce(); // never reuse, even across snapshots
         let plaintext = self.secrets.serialize();
         let ciphertext = aes_gcm_encrypt(&self.key, &nonce, &plaintext);

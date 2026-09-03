@@ -1,20 +1,78 @@
-use super::Secret;
+use std::fmt::Display;
+
 use crate::utils::DECRYPTION_CHECK_TAG;
 
+///
+///
+/// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
+#[derive(Eq, Debug, Clone)]
+pub struct Secret {
+    pub id: String,
+    pub uname: Option<String>, // optional, but at least one of uname or website must be provided
+    pub secret: String,
+    pub website: Option<String>,
+}
+
+impl Display for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let _ = write!(f, "password = ************************************");
+        let _ = write!(f, "passphrase = ");
+        if let Some(s) = &self.website {
+            write!(f, "{}", s)
+        } else {
+            write!(f, "<NO Passphrase set for this>")
+        }
+    }
+}
+
+impl Secret {
+    pub fn new(id: String, name: String, secret: String, website: Option<String>) -> Self {
+        Self {
+            id,
+            uname: Some(name),
+            secret,
+            website,
+        }
+    }
+
+    // TODO: validate the secret, e.g. website is a valid URL, or empty
+    pub fn validate_and_return(
+        secret: String,
+        uname: String,
+        website: String,
+    ) -> Result<Secret, String> {
+        if secret.is_empty() {
+            return Err("Secret's password cannot be empty".to_string());
+        }
+
+        if uname.is_empty() && website.is_empty() {
+            return Err("Either username or website must be provided".to_string());
+        }
+
+        Ok(Secret {
+            id: String::new(),
+            uname: if uname.is_empty() { None } else { Some(uname) },
+            secret,
+            website: if website.is_empty() {
+                None
+            } else {
+                Some(website)
+            },
+        })
+    }
+}
+
+impl PartialEq for Secret {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.uname == other.uname
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VaultContents {
     pub cntnt: Vec<Secret>,
 }
 
 impl VaultContents {
-    // pub struct LockedVault {
-    //     name: String,
-    //     salt: [u8; 16],
-    //     kdf_params: Argon2Params,
-    //     nonce: [u8; 12],
-    //     ciphertext: Vec<u8>, // includes AEAD tag
-    // }
-
     /// Format: DECRYPTION_CHECK_TAG ||
     /// secret_count(u32 LE) || for each secret:
     ///   id_len(u32 LE) || id_bytes ||
@@ -27,21 +85,25 @@ impl VaultContents {
 
         out.extend_from_slice(&(self.cntnt.len() as u32).to_le_bytes());
 
-        for secret in &self.cntnt {
-            let i_bytes = secret.id.as_bytes();
-            let u_bytes = secret.uname.as_bytes();
-            let s_bytes = secret.secret.as_bytes();
-
+        for s in &self.cntnt {
+            let i_bytes = s.id.as_bytes();
             out.extend_from_slice(&(i_bytes.len() as u32).to_le_bytes());
             out.extend_from_slice(i_bytes);
 
-            out.extend_from_slice(&(u_bytes.len() as u32).to_le_bytes());
-            out.extend_from_slice(u_bytes);
+            match &s.uname {
+                Some(u) => {
+                    let u_bytes = u.as_bytes();
+                    out.extend_from_slice(&(u_bytes.len() as u32).to_le_bytes());
+                    out.extend_from_slice(u_bytes);
+                }
+                None => out.extend_from_slice(&(0u32).to_le_bytes()), // no id
+            }
 
+            let s_bytes = s.secret.as_bytes();
             out.extend_from_slice(&(s_bytes.len() as u32).to_le_bytes());
             out.extend_from_slice(s_bytes);
 
-            match &secret.website {
+            match &s.website {
                 Some(h) => {
                     let h_bytes = h.as_bytes();
                     out.extend_from_slice(&(h_bytes.len() as u32).to_le_bytes());
@@ -70,7 +132,11 @@ impl VaultContents {
             let id = read_string(data, &mut pos, id_len)?;
 
             let u_len = read_u32(data, &mut pos)?;
-            let uname = read_string(data, &mut pos, u_len)?;
+            let uname: Option<String> = if u_len == 0 {
+                None
+            } else {
+                Some(read_string(data, &mut pos, u_len)?)
+            };
 
             let s_len = read_u32(data, &mut pos)?;
             let secret = read_string(data, &mut pos, s_len)?;
