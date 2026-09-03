@@ -7,6 +7,20 @@ pub fn read_line(buffer: &mut String) {
 pub trait InputSource {
     fn read_line(&mut self, prompt: &str) -> String;
     fn read_password(&mut self, prompt: &str) -> String;
+    fn read_line_with_default(&mut self, prompt: &str, default: &str) -> String {
+        let input = self.read_line(prompt);
+        if input.is_empty() {
+            default.to_string()
+        } else {
+            input
+        }
+    }
+
+    fn prompt_for_confirmation(&mut self, prompt: &str) -> bool {
+        let input = self.read_line(prompt);
+        let input = input.trim().to_lowercase();
+        input == "y" || input == "yes"
+    }
 }
 
 pub struct InputSourceImpl;

@@ -5,9 +5,9 @@ use std::vec;
 pub mod input;
 pub mod vc;
 
+use crate::utils::retry::{self, ErrCatchingRetry};
 use argon2::Params as Argon2Params;
 use rand_core::OsRng;
-
 
 pub const SALT_LEN: usize = 16;
 pub const NONCE_LEN: usize = 12;
@@ -46,6 +46,20 @@ impl Secret {
             website,
         }
     }
+
+    // TODO: validate the secret, e.g. website is a valid URL, or empty
+    // website and uname can be empty, but not both
+    pub fn validate(secret: &Secret) -> Result<(), String> {
+        if secret.secret.is_empty() {
+            return Err("Secret cannot be empty".to_string());
+        }
+        // TODO: validate website is a valid URL, or empty
+        // website and uname can be empty, but not both
+        if secret.uname.is_empty() && secret.website.is_none() {
+            return Err("Either username or website must be provided".to_string());
+        }
+        Ok(())
+    }
 }
 
 impl PartialEq for Secret {
@@ -68,33 +82,65 @@ impl VaultState {
             Self::Locked(locked) => {
                 let passw = input_src.read_password("Enter password: ");
                 match locked.unlock(&passw) {
-                    Ok(uv) =>  Self::Unlocked(uv),
-                    Err((lv, _)) => Self::Locked(lv)
+                    Ok(uv) => Self::Unlocked(uv),
+                    Err((lv, _)) => Self::Locked(lv),
                 }
             }
             Self::Unlocked(u) => Self::Locked(u.lock()),
-            Self::Limbo => Self::Limbo
+            Self::Limbo => Self::Limbo,
         }
     }
 
-    // returns None if password is not in the UNlocked state 
-    // returns true if this operation updates a secret
-    // false if this is a new entry. 
-    pub fn add_password(&mut self, secret: Secret) -> Option<bool> {
+    // returns false if secret was not added, true if it was added or updated
+    pub fn add_password(&mut self, secret: Secret) -> bool {
         match self {
-            Self::Unlocked(ul) => Some(ul.add_secret(secret)),
-            _ => None
+            Self::Unlocked(ul) => {
+                match Secret::validate(&secret) {
+                    // verify password field is not empty and (either website or username is provided)
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("Invalid secret: {}", e);
+                        return false;
+                    }
+                }
+
+                // verify if secret already exists, if so prompt for update
+                if let Some(existing_secret) =
+                    ul.fetch_secret_for_website(secret.website.as_ref().unwrap())
+                {
+                    // let mut rtry: ErrCatchingRetry<bool, ()> = retry::ErrCatchingRetry::default();
+                    let mut input_src = InputSourceImpl; // to satisfy the borrow checker
+                    // TODO : put this in a retry loop, if the user enters invalid input, we can retry
+                    // let update = <ErrCatchingRetry<Result<bool, ()>> as retry::Retry<bool>>::retry(&mut rtry, || {
+                    //     Ok(response)
+                    // });
+                    if input_src.prompt_for_confirmation(
+                        "Secret already exists for this website. Do you want to update it? (y/n): ",
+                    ) {
+                        *existing_secret = secret;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    ul.add_secret(secret);
+                    return true;
+                }
+            }
+            _ => false,
         }
     }
-    // prompt callback -> if it is  an update -> Fn() -> String 
 
-    pub fn fetch_password_for_website(&mut self, input_src: &mut impl InputSource) -> Option<Secret> {
+    pub fn fetch_password_for_website(
+        &mut self,
+        input_src: &mut impl InputSource,
+    ) -> Option<Secret> {
         match self {
             Self::Unlocked(ul) => {
                 let website = input_src.read_line("Enter website (without https://)");
                 return ul.fetch_secret_for_website(&website);
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -115,7 +161,7 @@ pub enum SignInError {
     Unlock(LockedVault, UnlockError),
 }
 
-use crate::data_struct::input::InputSource;
+use crate::data_struct::input::{InputSource, InputSourceImpl};
 use crate::data_struct::vc::VaultContents;
 use crate::utils::{aes_gcm_decrypt, aes_gcm_encrypt, generate_fresh_nonce};
 
@@ -219,42 +265,67 @@ pub struct UnlockedVault {
 }
 
 impl UnlockedVault {
-    pub fn add_secret(&mut self, s: Secret) -> bool {
-        let idx = {
-            let mut idx = 0;
-            for  scrt in &self.secrets.cntnt {
-                if *scrt == s {
-                    break;
-                }
-                idx += 1;
-            }
-            idx
-        };
+    pub fn add_secret(&mut self, s: Secret) {
+        // we previously checked if the secret already exists, so we can just push it to the vector
+        // fetch_secret_for_website will return a mutable reference to the existing secret if it exists, so we can update it in place
 
-        if idx < self.secrets.cntnt.len() {
-            self.secrets.cntnt[idx] = s;
-            return true;
-        }  
+        // let idx = {
+        //     let mut idx = 0;
+        //     for  scrt in &self.secrets.cntnt {
+        //         if *scrt == s {
+        //             break;
+        //         }
+        //         idx += 1;
+        //     }
+        //     idx
+        // };
+
+        // if idx < self.secrets.cntnt.len() {
+        //     self.secrets.cntnt[idx] = s;
+        //     return true;
+        // }
+        // self.secrets.cntnt.push(s);
+        // false
         self.secrets.cntnt.push(s);
-        false
     }
 
     // TODO: Use hash for O(1)
-    pub fn fetch_secret_for_website(&mut self, website: &str) -> Option<Secret> {
-        for  s in &self.secrets.cntnt {
+    // we must maintain the invariant that a website can only have one secret associated with it,
+    // so we can use the website as a key to fetch the secret. Also, we can use the website as a key to update the secret.
+    pub fn fetch_secret_for_website(&mut self, website: &str) -> Option<&mut Secret> {
+        for s in &mut self.secrets.cntnt {
             if s.website.is_none() {
                 continue;
             }
 
             if s.website.as_ref().unwrap() == website {
-                return Some(s.clone());
-            } 
+                return Some(s);
+            }
         }
         None
     }
 
-    pub fn fetch_secret<'a>(&self) -> Vec<Secret> {
-        vec![]
+    pub fn update_secret_at(&mut self, idx: usize, s: Secret) -> Result<(), String> {
+        if idx >= self.secrets.cntnt.len() {
+            return Err("Index out of bounds".to_string());
+        }
+        self.secrets.cntnt[idx] = s;
+        Ok(())
+    }
+
+    // TODO: Use hash for O(1) and return a reference to the secret instead of cloning it.
+    // this fetches all secrets that match the given string, either in the username or website.
+    pub fn fetch_secret<'a>(&self, like: &str) -> Vec<Secret> {
+        let like = like.to_lowercase();
+        let mut found = vec![];
+        for s in &self.secrets.cntnt {
+            if s.uname.contains(&like)
+                || (s.website.is_some() && s.website.as_ref().unwrap().contains(&like))
+            {
+                found.push(s.clone()); // TODO: return a reference instead of cloning
+            }
+        }
+        found
     }
 
     pub fn get_name(&self) -> &str {

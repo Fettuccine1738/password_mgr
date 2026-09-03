@@ -1,9 +1,12 @@
 use std::io::BufRead;
 
 use pass_man::{
-    create_new_vault, data_struct::{
-        Secret, VaultFiles, VaultState, input::{InputSource, InputSourceImpl},
-    }, load_vault_files,
+    create_new_vault,
+    data_struct::{
+        Secret, VaultFiles, VaultState,
+        input::{InputSource, InputSourceImpl},
+    },
+    load_vault_files,
 };
 
 const EXIT_CODE_WRONG_PASSWORD: i32 = 67;
@@ -34,7 +37,11 @@ fn print_smol_banner() {
     println!("=================================");
 }
 
-fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl InputSource) -> Result<(), std::io::Error> {
+fn prompt(
+    _vf: &VaultFiles,
+    vault_state: &mut VaultState,
+    input_src: &mut impl InputSource,
+) -> Result<(), std::io::Error> {
     let input: String = input_src.read_line("Enter number only: ");
 
     if input == "1" {
@@ -44,15 +51,15 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
                 eprintln!("Vault created succesfully");
                 VaultState::Unlocked(uv)
             }
-            None => {  
+            None => {
                 eprintln!("Could not create vault");
                 VaultState::Limbo
             }
         };
     } else if input == "2" {
         // required because rust won't let us leave state unintialized
-        // take puts us in Limbo 
-        let state = std::mem::take(vault_state);  // take
+        // take puts us in Limbo
+        let state = std::mem::take(vault_state); // take
         let new_state = VaultState::transition(state, input_src); // modify 
         *vault_state = new_state; // return
     } else if input == "3" {
@@ -63,20 +70,22 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
             eprintln!("No unlocked vault, sign in first");
             return Ok(());
         }
-        
+
         let name = input_src.read_line("Add name or email for secret: ");
         let passw = input_src.read_password("Add password: ");
         let website = input_src.read_line("Add website (without https://): ");
         let w = if website.is_empty() {
             None
-        } else { Some(website) };
+        } else {
+            Some(website)
+        };
 
         // let err_retry: ErrCatchingRetry<Result<String, io::Error>> = ErrCatchingRetry::default();
         let s = Secret {
-            id: String::new(), // TODO: figure out what ID means for us 
+            id: String::new(), // TODO: figure out what ID means for us
             uname: name,
             secret: passw,
-            website: w
+            website: w,
         };
 
         // if secret_exist prompt for y/n update
@@ -85,7 +94,7 @@ fn prompt(_vf: &VaultFiles, vault_state: &mut VaultState, input_src: &mut impl I
         // TODO: stopped here, handle logic to write immediately
         match VaultState::add_password(vault_state, s) {
             Some(false) => todo!(),
-            Some(true) => (), 
+            Some(true) => (),
             None => eprintln!("No unlocked vault-sign in first"),
         }
     } else if input == "4" {
