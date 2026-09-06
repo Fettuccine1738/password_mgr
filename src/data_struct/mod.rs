@@ -56,7 +56,24 @@ impl VaultState {
                 }
             }
             Self::Unlocked(u) => Self::Locked(u.lock()),
-            Self::Limbo => Self::Limbo,
+            Self::Limbo => { // we read again here instead of passing password and a stale vaultfiles because we 
+                //want to give the user a chance to enter a different vault name and password 
+                // if they want to sign in to a different vault.
+                let vault_name = input_src.read_line("Enter vault name: ");
+                let vault_files = crate::load_vault_files().expect("Failed to load vault files");
+                let path = crate::exists(&vault_name, &vault_files);
+                if path.is_empty() {
+                    eprintln!("Vault not found");
+                    return Self::Limbo;
+                }
+
+                if let Some(lv) = crate::populate_vault(&path, vault_name) {
+                    Self::Locked(lv)
+                } else {
+                    eprintln!("Could not load vault");
+                    Self::Limbo
+                }
+            }
         }
     }
 
