@@ -50,16 +50,15 @@ impl VaultState {
             )),
         }
     }
+
     // returns false if secret was not added, true if it was added or updated
-    pub fn add_password(&mut self, secret: Secret) -> bool {
+    pub fn add_password(&mut self, secret: Secret, input_src: &mut impl InputSource) -> bool {
         match self {
             Self::Unlocked(ul) => {
                 // verify if secret already exists, if so prompt for update
                 if let Some(existing_secret) =
                     ul.fetch_secret_for_website_mut(secret.website.as_ref().unwrap())
                 {
-                    // let mut rtry: ErrCatchingRetry<bool, ()> = retry::ErrCatchingRetry::default();
-                    let mut input_src = InputSourceImpl; // to satisfy the borrow checker
                     // TODO : put this in a retry loop, if the user enters invalid input, we can retry
                     // let update = <ErrCatchingRetry<Result<bool, ()>> as retry::Retry<bool>>::retry(&mut rtry, || {
                     //     Ok(response)
@@ -215,6 +214,10 @@ pub struct UnlockedVault {
 }
 
 impl UnlockedVault {
+    pub fn get_secrets_count(&self) -> usize {
+        self.secrets.cntnt.len()
+    }
+
     pub fn add_secret(&mut self, s: Secret) {
         // we previously checked if the secret already exists, so we can just push it to the vector
         // fetch_secret_for_website will return a mutable reference to the existing secret if it exists, so we can update it in place
@@ -313,6 +316,7 @@ impl UnlockedVault {
             secrets: VaultContents { cntnt: vec![] },
         }
     }
+
     /// Produces a locked snapshot for persisting, without consuming self —
     /// the vault stays unlocked in memory for further edits.
     pub fn snapshot(&self) -> LockedVault {

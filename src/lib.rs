@@ -85,7 +85,7 @@ fn write_to_disk(filename: &str, lv: &LockedVault) -> io::Result<()> {
 
     // filename either points to the old, fully-valid vault,
     // or the new, fully-valid vault. Avoiding mixed up data from crash windows
-    // or  the process is killed mid-write
+    // or when the process is killed mid-write
     fs::rename(&temp_path, &final_path)?;
     eprintln!("Vault saved as: {}", filename);
     Ok(())

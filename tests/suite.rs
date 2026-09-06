@@ -11,7 +11,185 @@ use pass_man::populate_vault;
 // }
 
 #[cfg(test)]
-mod vault_test {
+mod state_tests {
+    use pass_man::data_struct::{
+        LockedVault, UnlockedVault, VaultState, input::MockInput, vc::Secret,
+    };
+
+    #[test]
+    fn limbo_remains_in_limbo() {
+        let mut input = MockInput { lines: vec![] };
+
+        let state = VaultState::Limbo;
+        let next = state.transition(&mut input);
+
+        assert!(matches!(next, VaultState::Limbo));
+    }
+
+    #[test]
+    fn locked_vault_transitions_to_unlocked_with_correct_password() {
+        let unlocked = UnlockedVault::for_new_vault("test-vault".to_owned(), "secret");
+        let locked = unlocked.lock();
+        let mut state = VaultState::Locked(locked);
+
+        let mut input = MockInput {
+            lines: vec!["secret".to_owned()],
+        };
+
+        state = state.transition(&mut input);
+
+        match state {
+            VaultState::Unlocked(vault) => {
+                assert_eq!(vault.get_name(), "test-vault");
+            }
+            _ => panic!("expected unlocked vault"),
+        }
+    }
+
+    #[test]
+    fn locked_vault_remains_locked_with_wrong_password() {
+        let unlocked = UnlockedVault::for_new_vault("test-vault".to_owned(), "secret");
+        let locked = unlocked.lock();
+        let mut state = VaultState::Locked(locked);
+
+        let mut input = MockInput {
+            lines: vec!["wrong-password".to_owned()],
+        };
+
+        state = state.transition(&mut input);
+
+        assert!(matches!(state, VaultState::Locked(_)));
+    }
+
+    #[test]
+    fn unlocked_vault_transitions_to_locked() {
+        let unlocked = UnlockedVault::for_new_vault("test-vault".to_owned(), "secret");
+        let mut state = VaultState::Unlocked(unlocked);
+        let mut input = MockInput { lines: vec![] };
+
+        state = state.transition(&mut input);
+
+        assert!(matches!(state, VaultState::Locked(_)));
+    }
+
+    #[test]
+    fn locked_and_unlocked_transitions_round_trip() {
+        let unlocked = UnlockedVault::for_new_vault("test-vault".to_owned(), "secret");
+        let mut state = VaultState::Unlocked(unlocked);
+        let mut input = MockInput { lines: vec![] };
+
+        state = state.transition(&mut input);
+        assert!(matches!(state, VaultState::Locked(_)));
+
+        let mut input = MockInput {
+            lines: vec!["secret".to_owned()],
+        };
+
+        state = state.transition(&mut input);
+
+        match state {
+            VaultState::Unlocked(vault) => {
+                assert_eq!(vault.get_name(), "test-vault");
+            }
+            _ => panic!("expected unlocked vault after round trip"),
+        }
+    }
+
+    #[test]
+    fn locked_vault_can_be_constructed_with_new_and_unlocked() {
+        let locked = LockedVault::new("test-vault".to_owned());
+        let unlocked = locked.unlock_new("secret");
+
+        assert_eq!(unlocked.get_name(), "test-vault");
+    }
+
+    #[test]
+    fn when_confirmed_then_update_existing_secret() {
+        let initial = Secret::new(
+            "id".to_owned(),
+            "user".to_owned(),
+            "old-secret".to_owned(),
+            Some("example.com".to_owned()),
+        );
+        let replacement = Secret::new(
+            "id".to_owned(),
+            "user".to_owned(),
+            "new-secret".to_owned(),
+            Some("example.com".to_owned()),
+        );
+        let mut state = VaultState::Unlocked(UnlockedVault::for_new_vault(
+            "test-vault".to_owned(),
+            "secret",
+        ));
+        let mut input = MockInput { lines: vec![] };
+        assert!(state.add_password(initial, &mut input));
+
+        let mut input = MockInput {
+            lines: vec!["yes".to_owned()],
+        };
+        let update_succeeded = state.add_password(replacement, &mut input);
+        assert!(update_succeeded);
+
+        match state {
+            VaultState::Unlocked(vault) => {
+                assert_eq!(vault.get_secrets_count(), 1);
+                assert_eq!(
+                    vault
+                        .fetch_secret_for_website("example.com")
+                        .unwrap()
+                        .secret,
+                    "new-secret"
+                );
+            }
+            _ => panic!("expected unlocked vault"),
+        }
+    }
+
+    #[test]
+    fn declining_existing_secret_update_keeps_old_secret() {
+        let initial = Secret::new(
+            "id".to_owned(),
+            "user".to_owned(),
+            "old-secret".to_owned(),
+            Some("example.com".to_owned()),
+        );
+        let replacement = Secret::new(
+            "id".to_owned(),
+            "user".to_owned(),
+            "new-secret".to_owned(),
+            Some("example.com".to_owned()),
+        );
+        let mut state = VaultState::Unlocked(UnlockedVault::for_new_vault(
+            "test-vault".to_owned(),
+            "secret",
+        ));
+        let mut input = MockInput { lines: vec![] };
+        assert!(state.add_password(initial, &mut input));
+
+        let mut input = MockInput {
+            lines: vec!["no".to_owned()],
+        };
+        let update_succeeded = state.add_password(replacement, &mut input);
+        assert!(!update_succeeded);
+
+        match state {
+            VaultState::Unlocked(vault) => {
+                assert_eq!(vault.get_secrets_count(), 1);
+                assert_eq!(
+                    vault
+                        .fetch_secret_for_website("example.com")
+                        .unwrap()
+                        .secret,
+                    "old-secret"
+                );
+            }
+            _ => panic!("expected unlocked vault"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod lock_unlock_tests {
     use pass_man::create_new_vault;
     use pass_man::data_struct::UnlockedVault;
     use pass_man::data_struct::input::MockInput;
@@ -169,7 +347,7 @@ mod vault_test {
 
 #[cfg(test)]
 pub mod vc_test {
-    use pass_man::data_struct::Secret;
+    use pass_man::data_struct::vc::Secret;
     use pass_man::data_struct::vc::VaultContents;
     use pass_man::utils::DECRYPTION_CHECK_TAG;
 
@@ -222,5 +400,17 @@ pub mod vc_test {
         let ctnt: Vec<u8> = vec![1, 2, 3, 4];
         let ds = VaultContents::deserialize(&ctnt);
         assert!(ds.is_err());
+    }
+
+    #[test]
+    fn test_validate_and_return_success() {
+        let secret = Secret::validate_and_return(A.to_owned(), B.to_owned(), C.to_owned());
+        assert!(secret.is_ok());
+    }
+
+    #[test]
+    fn test_validate_and_return_failure() {
+        let secret = Secret::validate_and_return(A.to_string(), "".to_string(), "".to_string());
+        assert!(secret.is_err());
     }
 }

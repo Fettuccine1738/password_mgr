@@ -1,7 +1,11 @@
 use pass_man::{
-    create_new_vault, data_struct::{
-        VaultFiles, VaultState, input::{InputSource, InputSourceImpl}, vc::Secret,
-    }, load_vault_files,
+    create_new_vault,
+    data_struct::{
+        VaultFiles, VaultState,
+        input::{InputSource, InputSourceImpl},
+        vc::Secret,
+    },
+    load_vault_files,
 };
 
 const _EXIT_CODE_WRONG_PASSWORD: i32 = 67;
@@ -74,15 +78,15 @@ fn prompt(
         //  since we have all the fields here.
         match Secret::validate_and_return(passw, name, website) {
             Ok(s) => {
-                if vault_state.add_password(s) {
+                if vault_state.add_password(s, input_src) {
                     let _ = vault_state.lock_and_write();
                     eprintln!("Password added successfully");
                 } else {
                     eprintln!("Password already exists, not added");
                 }
-            },            
-            Err(msg) => eprintln!("Invalid secret: {}", msg ),
-        }; 
+            }
+            Err(msg) => eprintln!("Invalid secret: {}", msg),
+        };
     } else if input == "4" {
         match VaultState::fetch_password_for_website(vault_state, input_src) {
             Some(secret) => println!("{}", secret), // relies on Secret's Display impl
@@ -95,6 +99,8 @@ fn prompt(
         let input = &input.to_lowercase();
         if input == "q" || input == "quit" || input == "Quit" {
             // clean up
+            // we could be cautious and check if vault_state is Unlocked, and if so, lock it and write it to disk, but we will just exit for now.
+            // we prefer to only lock and write when we have a new password, so we don't have to ask for the password again.
             eprintln!("exiting.....");
             std::process::exit(0);
         } else {
