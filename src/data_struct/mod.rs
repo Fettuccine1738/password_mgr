@@ -6,6 +6,7 @@ pub mod input;
 pub mod vc;
 
 use argon2::Params as Argon2Params;
+use colored::Colorize;
 use rand_core::OsRng;
 
 pub const SALT_LEN: usize = 16;
@@ -22,6 +23,21 @@ pub enum VaultState {
 }
 
 impl VaultState {
+
+    /// returns a `colored` string representation of the current state of the vault, 
+    /// including the name of the vault and the number of secrets if unlocked.
+    pub fn get_state_info(&self) -> String {
+        match self {
+            Self::Locked(lv) => format!("Locked vault: {}: You need to unlock by signing in.", lv.name).italic().yellow().to_string(),
+            Self::Unlocked(uv) => format!(
+                "Unlocked vault: {} with {} secrets",
+                uv.name,
+                uv.get_secrets_count()
+            ).italic().green().to_string(),
+            Self::Limbo => "No vault loaded".to_string().italic().red().to_string(),
+        }
+    }
+
     pub fn transition(self, input_src: &mut impl InputSource) -> Self {
         match self {
             Self::Locked(locked) => {

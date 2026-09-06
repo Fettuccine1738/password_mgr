@@ -9,14 +9,14 @@ use pass_man::{
 };
 
 const _EXIT_CODE_WRONG_PASSWORD: i32 = 67;
-const MAIN_PROMPT: &str = "What would you like to do? \n\
+const MAIN_PROMPT: &str = "   
+                               What would you like to do? \n\
                                1. Create a new password vault \n\
                                2. Sign in to a password vault \n\
                                3. Add a password to a vault \n\
                                4. Fetch a password from a vault \n\
                                5. Sign out of the current vault \n\
                                6. Quit \n\
-                               NOTE: If you have previously signed in, no need to sign in again.
                               ";
 
 fn run_cli() {
@@ -26,6 +26,7 @@ fn run_cli() {
     let mut input_src = InputSourceImpl; // no cost for a 0 sized type, nice for readability
     loop {
         print!("{}", MAIN_PROMPT);
+        println!("{:?}.", vault_state.get_state_info());
         let _ = prompt(&vault_files, &mut vault_state, &mut input_src);
     }
 }
@@ -95,6 +96,9 @@ fn prompt(
     } else if input == "5" {
         eprintln!("Signing out of current vault");
         *vault_state = VaultState::Limbo;
+    } else if input == "6" {
+        eprintln!("exiting.....");
+        std::process::exit(0);
     } else {
         let input = &input.to_lowercase();
         if input == "q" || input == "quit" || input == "Quit" {

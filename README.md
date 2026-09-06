@@ -18,8 +18,14 @@ vs. unlocked vault state is enforced at the type level.
   reachable through an `UnlockedVault`, and locking always re-encrypts
   with a fresh nonce (nonce reuse under the same key is a hard rule this
   project enforces by construction, not convention).
-- **Simple REPL interface** — create a vault, sign in, add a secret, or
-  fetch a secret by website, all through a numbered menu.
+- **Simple REPL interface** — create a vault, sign in, add a secret, fetch a
+  secret by website, sign out, or quit through a numbered menu.
+- **Secret updates with confirmation** — adding a secret for a website that
+  already exists prompts for confirmation before replacing the existing
+  secret. Declining leaves the original secret unchanged.
+- **Automatic persistence** — successfully adding a new or updated secret
+  snapshots the unlocked vault, encrypts it, and writes the vault file to
+  `~/.pass_mgr/`.
 - **Testable I/O boundary** — user input is behind an `InputSource` trait
   with a mock implementation, so vault logic can be tested without a
   real terminal.
@@ -35,6 +41,23 @@ UnlockedVault { name, key, salt, kdf_params, secrets }
      v
 LockedVault (new nonce, new ciphertext)
 ```
+
+### CLI workflow
+
+When the program starts, choose an action from the numbered menu:
+
+1. Create a new vault. Provide a vault name and confirm the master password.
+2. Sign in to an existing vault with its master password.
+3. Add a secret by entering a username or email, password, and website. The
+   vault is saved after a successful add. If the website already exists, answer
+   `y` or `yes` to update it, or `n`/`no` to keep the existing secret.
+4. Fetch a secret by website while the vault is unlocked.
+5. Sign out and return to the locked/limbo state.
+6. Quit the program.
+
+Newly created and modified vaults are persisted immediately after a successful
+secret add or update. Signing out clears the unlocked vault from the active
+CLI state.
 
 On-disk vault file layout:
 
@@ -61,9 +84,10 @@ generated inside that directory for details.
 cargo test
 ```
 
-Integration tests exercise vault creation, locking/unlocking, and
-serialization round-trips against temp files; unit tests cover
-serialization edge cases and encryption primitives directly.
+Integration tests exercise vault creation, locking/unlocking, secret
+add/update confirmation, encrypted persistence to disk, and serialization
+round-trips against temp files; unit tests cover serialization edge cases and
+encryption primitives directly.
 
 ## Project status
 
