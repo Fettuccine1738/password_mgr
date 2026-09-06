@@ -3,18 +3,15 @@ use pass_man::data_struct::SALT_LEN;
 use pass_man::data_struct::SALT_NONCE_LEN;
 use pass_man::populate_vault;
 
-// pub mod lib_test {
-
-//     fn tests_lib_creation_is_succesful() {
-
-//     }
-// }
-
 #[cfg(test)]
 mod state_tests {
     use pass_man::data_struct::{
         LockedVault, UnlockedVault, VaultState, input::MockInput, vc::Secret,
     };
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static PERSISTENCE_TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn limbo_remains_in_limbo() {
@@ -185,6 +182,41 @@ mod state_tests {
             }
             _ => panic!("expected unlocked vault"),
         }
+    }
+
+    #[test]
+    fn adding_new_secret_writes_vault_bytes_to_disk() {
+        let counter = PERSISTENCE_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let vault_name = format!(
+            "state_test_persistence_{}_{}",
+            std::process::id(),
+            counter
+        );
+        let store_dir = std::env::var("HOME")
+            .expect("HOME environment variable not set")
+            + "/.pass_mgr";
+        fs::create_dir_all(&store_dir).expect("failed to create vault store directory");
+
+        let secret = Secret::new(
+            "id".to_owned(),
+            "user".to_owned(),
+            "stored-secret".to_owned(),
+            Some("example.com".to_owned()),
+        );
+        let mut state =
+            VaultState::Unlocked(UnlockedVault::for_new_vault(vault_name.clone(), "secret"));
+        let mut input = MockInput { lines: vec![] };
+
+        assert!(state.add_password(secret, &mut input));
+        state
+            .lock_and_write()
+            .expect("failed to write vault to disk");
+
+        let vault_path = std::path::Path::new(&store_dir).join(&vault_name);
+        let bytes = fs::read(&vault_path).expect("failed to read written vault");
+        assert!(!bytes.is_empty());
+
+        fs::remove_file(vault_path).expect("failed to remove written vault");
     }
 }
 

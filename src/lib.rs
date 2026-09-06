@@ -171,27 +171,6 @@ pub fn populate_vault(path: &str, vault_name: String) -> Option<LockedVault> {
     None
 }
 
-/// adds a password to a `Vault`.
-///
-/// # Arguments
-/// * `uv` - UnlockedVault to store password to.
-/// * `p` - Secret details to be stored.
-///
-/// # Returns
-/// true - if no instance of this password existed before storage
-/// false - if a password with the same username and id exists
-pub fn add_password(_vs: &mut VaultState, _p: Secret) -> bool {
-    false
-}
-
-pub fn get_secret(_id: String) -> Option<Secret> {
-    None
-}
-
-pub fn get_secret_using(_hint: String) -> Option<Secret> {
-    None
-}
-
 pub fn load_vault_files() -> Result<VaultFiles, std::io::Error> {
     let pbuf = &get_store_dir_path();
     if !std::fs::exists(pbuf).expect("Can't check existence of directory to be used as database") {
