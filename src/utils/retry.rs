@@ -5,8 +5,10 @@ use std::time::Duration;
 const DEFAULT_MAX_TRIES: u32 = 3;
 const DEFAULT_MS_DELAY: u64 = 500; // ms
 
-///
-///
+/// A trait for retrying a function call multiple times with a delay between attempts.
+/// The trait is generic over the return type `T` of the function being retried.
+/// Implementors of this trait must provide a method to retrieve retry configuration data,
+/// such as the maximum number of attempts and the delay between attempts.
 pub trait Retry<T> {
     fn retry_data(&self) -> &RetryData;
 

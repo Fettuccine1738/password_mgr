@@ -23,17 +23,25 @@ pub enum VaultState {
 }
 
 impl VaultState {
-
-    /// returns a `colored` string representation of the current state of the vault, 
+    /// returns a `colored` string representation of the current state of the vault,
     /// including the name of the vault and the number of secrets if unlocked.
     pub fn get_state_info(&self) -> String {
         match self {
-            Self::Locked(lv) => format!("Locked vault: {}: You need to unlock by signing in.", lv.name).italic().yellow().to_string(),
+            Self::Locked(lv) => format!(
+                "Locked vault: {}: You need to unlock by signing in.",
+                lv.name
+            )
+            .italic()
+            .yellow()
+            .to_string(),
             Self::Unlocked(uv) => format!(
                 "Unlocked vault: {} with {} secrets",
                 uv.name,
                 uv.get_secrets_count()
-            ).italic().green().to_string(),
+            )
+            .italic()
+            .green()
+            .to_string(),
             Self::Limbo => "No vault loaded".to_string().italic().red().to_string(),
         }
     }
@@ -44,7 +52,7 @@ impl VaultState {
                 let passw = input_src.read_password("Enter password: ");
                 match locked.unlock(&passw) {
                     Ok(uv) => Self::Unlocked(uv),
-                    Err((lv, _)) => Self::Locked(lv),
+                    Err(boxed_error) => Self::Locked(boxed_error.0),
                 }
             }
             Self::Unlocked(u) => Self::Locked(u.lock()),
@@ -60,10 +68,7 @@ impl VaultState {
                 super::write_to_disk(filename, &locked)?;
                 Ok(())
             }
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Vault is not unlocked",
-            )),
+            _ => Err(std::io::Error::other("Vault is not unlocked")),
         }
     }
 
@@ -89,7 +94,7 @@ impl VaultState {
                     }
                 } else {
                     ul.add_secret(secret);
-                    return true;
+                    true
                 }
             }
             _ => false,
@@ -103,7 +108,7 @@ impl VaultState {
         match self {
             Self::Unlocked(ul) => {
                 let website = input_src.read_line("Enter website (without https://)");
-                return ul.fetch_secret_for_website(&website);
+                ul.fetch_secret_for_website(&website)
             }
             _ => None,
         }
@@ -123,10 +128,10 @@ pub enum UnlockError {
 #[derive(Debug)]
 pub enum SignInError {
     NotFound,
-    Unlock(LockedVault, UnlockError),
+    Unlock(Box<(LockedVault, UnlockError)>),
 }
 
-use crate::data_struct::input::{InputSource, InputSourceImpl};
+use crate::data_struct::input::InputSource;
 use crate::data_struct::vc::{Secret, VaultContents};
 use crate::utils::{aes_gcm_decrypt, aes_gcm_encrypt, generate_fresh_nonce};
 
@@ -182,7 +187,7 @@ impl LockedVault {
         }
     }
 
-    pub fn unlock(self, password: &str) -> Result<UnlockedVault, (LockedVault, UnlockError)> {
+    pub fn unlock(self, password: &str) -> Result<UnlockedVault, Box<(LockedVault, UnlockError)>> {
         let key: [u8; 32] =
             crate::utils::derive_key(password.as_bytes(), &self.salt, &self.kdf_params);
 
@@ -196,9 +201,9 @@ impl LockedVault {
                     kdf_params: self.kdf_params,
                     secrets,
                 }),
-                Err(_) => Err((self, UnlockError::CorruptStore)),
+                Err(_) => Err(Box::new((self, UnlockError::CorruptStore))),
             },
-            Err(_) => Err((self, UnlockError::WrongPassword)),
+            Err(_) => Err(Box::new((self, UnlockError::WrongPassword))),
         }
     }
 
@@ -297,7 +302,7 @@ impl UnlockedVault {
 
     // TODO: Use hash for O(1) and return a reference to the secret instead of cloning it.
     // this fetches all secrets that match the given string, either in the username or website.
-    pub fn fetch_secret<'a>(&self, like: &str) -> Vec<Secret> {
+    pub fn fetch_secret(&self, like: &str) -> Vec<Secret> {
         let like = like.to_lowercase();
         let mut found = vec![];
         for s in &self.secrets.cntnt {

@@ -6,9 +6,7 @@ use crate::data_struct::SignInError;
 use crate::data_struct::UnlockError;
 use crate::data_struct::UnlockedVault;
 use crate::data_struct::VaultFiles;
-use crate::data_struct::VaultState;
 use crate::data_struct::input::InputSource;
-use crate::data_struct::vc::Secret;
 use crate::utils::retry::BoolConditionRetry;
 use crate::utils::retry::ErrCatchingRetry;
 use crate::utils::retry::Retry;
@@ -110,17 +108,17 @@ pub fn sign_into_vault(
     // exists succeeds but might fail due to TOCTOU errors with
     // the file.
     let lv: LockedVault = populate_vault(&filepath, name.to_owned()).unwrap();
-    let mut err_retry: ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> =
+    let mut err_retry: ErrCatchingRetry<UnlockedVault, Box<(LockedVault, UnlockError)>> =
         ErrCatchingRetry::default();
 
-    match <ErrCatchingRetry<UnlockedVault, (LockedVault, UnlockError)> as Retry<
-        Result<UnlockedVault, (LockedVault, UnlockError)>,
+    match <ErrCatchingRetry<UnlockedVault, Box<(LockedVault, UnlockError)>> as Retry<
+        Result<UnlockedVault, Box<(LockedVault, UnlockError)>>,
     >>::retry(&mut err_retry, || {
         let password = src.read_password("Enter password:\t");
         lv.clone().unlock(&password)
     }) {
-        Ok(uv) => return Ok(uv),
-        Err((lv, ue)) => Err(SignInError::Unlock(lv, ue)),
+        Ok(uv) => Ok(uv),
+        Err(boxed_err) => Err(SignInError::Unlock(boxed_err)),
     }
 }
 
@@ -128,13 +126,13 @@ pub fn exists(name: &str, vf: &VaultFiles) -> String {
     let base = get_store_dir_path();
 
     for path in &vf.0 {
-        let token = path.strip_prefix(&base).expect(
-            &(format!(
+        let token = path.strip_prefix(&base).unwrap_or_else(|_| {
+            panic!(
                 "Error stripping base = `{}` from path = `{}`",
                 base.to_str().unwrap(),
                 path.to_str().unwrap()
-            )),
-        );
+            )
+        });
 
         if token.to_str().unwrap() == name {
             return path.to_str().unwrap().to_string();
@@ -162,8 +160,8 @@ pub fn populate_vault(path: &str, vault_name: String) -> Option<LockedVault> {
         let mut salt: [u8; SALT_LEN] = [0u8; SALT_LEN];
         let mut nonce: [u8; NONCE_LEN] = [0u8; NONCE_LEN];
 
-        salt.copy_from_slice(&s);
-        nonce.copy_from_slice(&n);
+        salt.copy_from_slice(s);
+        nonce.copy_from_slice(n);
 
         return Some(LockedVault::init(vault_name, salt, nonce, cipher));
     }

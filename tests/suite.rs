@@ -187,14 +187,9 @@ mod state_tests {
     #[test]
     fn adding_new_secret_writes_vault_bytes_to_disk() {
         let counter = PERSISTENCE_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let vault_name = format!(
-            "state_test_persistence_{}_{}",
-            std::process::id(),
-            counter
-        );
-        let store_dir = std::env::var("HOME")
-            .expect("HOME environment variable not set")
-            + "/.pass_mgr";
+        let vault_name = format!("state_test_persistence_{}_{}", std::process::id(), counter);
+        let store_dir =
+            std::env::var("HOME").expect("HOME environment variable not set") + "/.pass_mgr";
         fs::create_dir_all(&store_dir).expect("failed to create vault store directory");
 
         let secret = Secret::new(
