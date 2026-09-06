@@ -190,7 +190,6 @@ pub fn load_vault_files() -> Result<VaultFiles, std::io::Error> {
         for entry in fs::read_dir(pbuf)? {
             let entry = entry?;
             let path = entry.path();
-            eprintln!("found {}", path.to_str().unwrap());
 
             if path.is_dir() {
                 continue;
