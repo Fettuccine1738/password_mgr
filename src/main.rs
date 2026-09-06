@@ -61,6 +61,10 @@ fn prompt(
         let state = std::mem::take(vault_state); // take
         let new_state = VaultState::transition(state, input_src); // modify 
         *vault_state = new_state; // return
+        // make sign in a single step instead of 2 steps
+        // e.g limbo -> locked -> unlocked, instead of limbo -> locked, then locked -> unlocked
+        // from an unlocked state: unlocked -> locked -> unlocked, instead of unlocked -> locked, then locked -> unlocked
+        *vault_state = VaultState::transition(std::mem::take(vault_state), input_src);  
     } else if input == "3" {
         // Some of secret's fields are optional, but we will require all of them for now.
         // i.e store a secret not associated with a website, but we will require a name and password.
