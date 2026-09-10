@@ -14,13 +14,31 @@ mod state_tests {
     static PERSISTENCE_TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
-    fn limbo_remains_in_limbo() {
-        let mut input = MockInput { lines: vec![] };
+    fn limbo_transitions_to_unlocked_with_valid_vault_credentials() {
+        let counter = PERSISTENCE_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let vault_name = format!("limbo_transition_{}_{}", std::process::id(), counter);
+        let store_dir =
+            std::env::var("HOME").expect("HOME environment variable not set") + "/.pass_mgr";
+        fs::create_dir_all(&store_dir).expect("failed to create vault store directory");
 
-        let state = VaultState::Limbo;
-        let next = state.transition(&mut input);
+        let mut persisted =
+            VaultState::Unlocked(UnlockedVault::for_new_vault(vault_name.clone(), "secret"));
+        persisted
+            .lock_and_write()
+            .expect("failed to persist vault for limbo transition");
 
-        assert!(matches!(next, VaultState::Limbo));
+        let mut input = MockInput {
+            lines: vec![vault_name.clone(), "secret".to_owned()],
+        };
+        let state = VaultState::Limbo.transition(&mut input);
+
+        match state {
+            VaultState::Unlocked(vault) => assert_eq!(vault.get_name(), vault_name),
+            _ => panic!("expected limbo to transition directly to unlocked"),
+        }
+
+        let vault_path = std::path::Path::new(&store_dir).join(vault_name);
+        fs::remove_file(vault_path).expect("failed to remove limbo transition vault");
     }
 
     #[test]

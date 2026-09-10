@@ -7,7 +7,7 @@ use crate::utils::DECRYPTION_CHECK_TAG;
 /// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
 #[derive(Eq, Debug, Clone)]
 pub struct Secret {
-    pub id: String,
+    pub id: String, // TODO: this is a unique id for the secret, for future use. 
     pub uname: Option<String>, // optional, but at least one of uname or website must be provided
     pub secret: String,
     pub website: Option<String>,
@@ -15,8 +15,16 @@ pub struct Secret {
 
 impl Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let _ = write!(f, "password = ************************************");
-        let _ = write!(f, "passphrase = ");
+        let _ = writeln!(f, "Username: ");
+        if let Some(s) = &self.uname {
+            let _ = write!(f, "{}", s);
+        } else {
+            let _ = write!(f, "<NO Username set for this>");
+        }
+        let _ = writeln!(f, "secret = ");
+        let _ = write!(f, "{}", self.secret);
+
+        let _ = writeln!(f, "website = ");
         if let Some(s) = &self.website {
             write!(f, "{}", s)
         } else {
