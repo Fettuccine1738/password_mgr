@@ -4,7 +4,7 @@ use crate::utils::DECRYPTION_CHECK_TAG;
 
 ///
 ///
-/// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map
+/// TODO: Impl Hash for this, Secrets are owned by VaultContents which may be backed by a Map in the future
 #[derive(Eq, Debug, Clone)]
 pub struct Secret {
     pub id: String, // TODO: this is a unique id for the secret, for future use. 
@@ -75,6 +75,7 @@ impl PartialEq for Secret {
         self.id == other.id && self.uname == other.uname
     }
 }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VaultContents {
     pub cntnt: Vec<Secret>,
